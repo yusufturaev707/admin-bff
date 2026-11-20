@@ -1,0 +1,75 @@
+[project]
+name = "admin-bff"
+version = "0.1.0"
+description = "UZBMB yagona adminka backend'i (Admin BFF)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.14",
+    "asyncpg>=0.30",
+    "fastapi>=0.115",
+    "gunicorn>=23.0",
+    "httpx>=0.28",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "redis>=5.2",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "structlog>=24.4",
+    "uvicorn>=0.34",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.8",
+    "mypy>=1.14",
+    "pip-audit>=2.7",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "ruff>=0.9",
+]
+
+[tool.uv]
+# The BFF is an application, not a distributable library: the project itself
+# is not installed into the virtualenv, `app` is imported from the repo root.
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF",
+    "S",      # bandit rules
+    "DTZ",    # naive datetimes are forbidden: everything is timezone-aware UTC
+    "ASYNC",
+    "PT",
+    "T20",    # no print()
+    "TID",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"datetime.datetime.utcnow".msg = "Use app.core.time.utcnow() (timezone-aware UTC)."
+"datetime.datetime.utcfromtimestamp".msg = "Use datetime.fromtimestamp(ts, UTC)."
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error"]
