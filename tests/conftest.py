@@ -1,6 +1,12 @@
-import pytest
+from collections.abc import AsyncIterator
 
+import httpx
+import pytest
+from fastapi import FastAPI
+
+from app.main import create_app
 from app.settings import Settings
+from tests.helpers import app_client
 
 FRONTEND_ORIGIN = "https://admin.test.uz"
 
@@ -24,3 +30,14 @@ def settings(clean_env: pytest.MonkeyPatch) -> Settings:
         log_level="INFO",
         frontend_origin=FRONTEND_ORIGIN,
     )
+
+
+@pytest.fixture
+def app(settings: Settings) -> FastAPI:
+    return create_app(settings)
+
+
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    async with app_client(app) as c:
+        yield c
