@@ -39,6 +39,9 @@ Hammasi bitta skriptda, CI ham shuni ishlatadi:
 bash scripts/ci.sh
 ```
 
+CI: GitHub Actions (`.github/workflows/ci.yml`) shu skriptni `master`'ga har
+bir push'da va har bir Pull Request'da ishga tushiradi.
+
 Alohida:
 
 ```bash
