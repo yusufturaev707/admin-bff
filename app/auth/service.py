@@ -198,7 +198,9 @@ class AuthService:
             ip=meta.ip,
             user_agent=meta.user_agent,
             mfa_at=now if mfa_done else None,
-            pending=_pending_steps(user, totp_ready=user.totp_enabled),
+            pending=_pending_steps(
+                user, totp_ready=user.totp_enabled or not self._settings.totp_required
+            ),
             perm_version=user.perm_version,
         )
         return SessionStarted(session_id, session)
@@ -206,21 +208,24 @@ class AuthService:
     async def _after_primary_factor(
         self, user: AdminUser, method: AuthMethod, meta: RequestMeta
     ) -> LoginResult:
-        if user.totp_enabled:
+        totp_required = self._settings.totp_required
+        if user.totp_enabled and totp_required:
             token = await self._mfa_tokens.issue(
                 user_id=user.id, username=user.username, method=method
             )
             return MfaRequired(token)
         # First sign-in: no TOTP yet. A restricted session that can only enroll
         # TOTP (and then change the password) is the only thing granted.
-        started = await self._start_session(user, method, meta, mfa_done=False)
+        # Without TOTP (development) the session is a full one at once.
+        started = await self._start_session(user, method, meta, mfa_done=not totp_required)
         await self._audit(
             "auth.login",
             AuditOutcome.SUCCESS,
             meta,
             user=user,
             session=started.session,
-            step="setup",
+            step="setup" if started.session.pending else "session",
+            totp_required=totp_required,
         )
         return started
 
@@ -404,14 +409,18 @@ class AuthService:
         session: SessionData,
         old_password: str,
         new_password: str,
-        code: str,
+        code: str | None,
         meta: RequestMeta,
     ) -> None:
-        """Needs the current password and a TOTP code. Ends every session of the admin."""
+        """Needs the current password and a TOTP code (unless TOTP is off).
+        Ends every session of the admin."""
         failure: str | None = None
+        totp_required = self._settings.totp_required
+        if totp_required and code is None:
+            raise field_error(("body", "code"), "invalid_code", INVALID_CODE)
         async with self._db() as db, db.begin():
             user = await self._load_user(db, session)
-            if not user.totp_enabled:
+            if totp_required and not user.totp_enabled:
                 raise AppError(
                     ErrorCode.FORBIDDEN,
                     "Avval TOTP'ni ulang",
@@ -426,7 +435,9 @@ class AuthService:
                 raise field_error(("body", "new_password"), exc.reason, exc.message) from exc
             if not await self._passwords.verify(user.password_hash, old_password):
                 failure = "old_password"
-            elif not await self._second_factor.verify(db, user, TotpFactor(code)):
+            elif totp_required and not await self._second_factor.verify(
+                db, user, TotpFactor(code or "")
+            ):
                 failure = "code"
             elif await self._passwords.verify(user.password_hash, new_password):
                 raise field_error(

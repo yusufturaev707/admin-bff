@@ -82,7 +82,7 @@ async def login(
     set_session_cookie(response, result.session_id)
     return LoginResponse(
         mfa_required=False,
-        setup_required=True,
+        setup_required=result.session.setup_required,
         pending=list(result.session.pending),
         csrf_token=result.session.csrf_token,
     )

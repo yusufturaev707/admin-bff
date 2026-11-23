@@ -3274,18 +3274,24 @@
             "title": "New Password"
           },
           "code": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Code",
-            "description": "Autentifikator ilovasidagi 6 xonali kod"
+            "description": "TOTP kod. Faqat TOTP o'chirilgan development muhitida yuborilmaydi"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "old_password",
-          "new_password",
-          "code"
+          "new_password"
         ],
         "title": "PasswordChangeRequest"
       },

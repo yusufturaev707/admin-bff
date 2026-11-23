@@ -114,7 +114,11 @@ class SessionList(BaseModel):
 class PasswordChangeRequest(_Request):
     old_password: str = Field(min_length=1, max_length=MAX_LENGTH)
     new_password: str = Field(min_length=1, max_length=MAX_LENGTH)
-    code: str = _CODE
+    code: str | None = Field(
+        default=None,
+        pattern=r"^[0-9]{6}$",
+        description="TOTP kod. Faqat TOTP o'chirilgan development muhitida yuborilmaydi",
+    )
 
 
 class TotpEnrollResponse(BaseModel):

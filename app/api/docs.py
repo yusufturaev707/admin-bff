@@ -85,6 +85,7 @@ _CSS = """#bff-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: cent
 _INIT = """(() => {
   "use strict";
   const SIGN_IN = __SIGN_IN__;
+  const TOTP = __TOTP__;
   const API = "/api/v1";
   const UNSAFE = ["POST", "PUT", "PATCH", "DELETE"];
   const $ = (id) => document.getElementById(id);
@@ -157,6 +158,10 @@ _INIT = """(() => {
     await refresh();
   }
 
+  if (!TOTP) {
+    $("bff-code").hidden = true;
+    $("bff-stepup").hidden = true;
+  }
   if (SIGN_IN) {
     $("bff-bar").addEventListener("submit", signIn);
     $("bff-stepup").addEventListener("click", stepUp);
@@ -214,10 +219,10 @@ async def docs() -> HTMLResponse:
 
 @router.get(f"{DOCS_URL}/init.js", operation_id="core_docsinit_get", response_class=Response)
 async def docs_init(request: Request) -> Response:
-    sign_in = "false" if request.app.state.settings.is_production else "true"
-    return Response(
-        _INIT.replace("__SIGN_IN__", sign_in), media_type="text/javascript", headers=_NO_STORE
-    )
+    settings = request.app.state.settings
+    script = _INIT.replace("__SIGN_IN__", "false" if settings.is_production else "true")
+    script = script.replace("__TOTP__", "true" if settings.totp_required else "false")
+    return Response(script, media_type="text/javascript", headers=_NO_STORE)
 
 
 @router.get(f"{DOCS_URL}/docs.css", operation_id="core_docscss_get", response_class=Response)

@@ -120,8 +120,12 @@ def require_recent_mfa(max_age_s: int = 300) -> Callable[..., Awaitable[SessionD
     """401 `step_up_required` unless TOTP was entered within `max_age_s` seconds."""
 
     async def dependency(
-        session: AuthenticatedSession, clock: Annotated[Clock, Depends(get_clock)]
+        request: Request,
+        session: AuthenticatedSession,
+        clock: Annotated[Clock, Depends(get_clock)],
     ) -> SessionData:
+        if not request.app.state.settings.totp_required:
+            return session  # TOTP is off (development only): nothing to re-enter
         if session.mfa_at is None or clock() - session.mfa_at > timedelta(seconds=max_age_s):
             raise AppError(ErrorCode.STEP_UP_REQUIRED)
         return session

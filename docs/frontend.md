@@ -58,6 +58,11 @@ bo'ladi, uni ham ko'rsating.
 
 ## Login va parol bilan kirish
 
+> Development'da TOTP o'chirilgan bo'lishi mumkin (`TOTP_REQUIRED=false`).
+> Unda `POST /auth/login` javobi darhol `mfa_required: false` bo'ladi va
+> sessiya ochiladi, step-up ham so'ralmaydi. Frontend ikkala holatni ham
+> qo'llab-quvvatlashi kerak: production'da TOTP har doim yoqilgan.
+
 1. Login va parol yuboriladi:
 
    ```http
