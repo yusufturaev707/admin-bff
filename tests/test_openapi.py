@@ -9,7 +9,7 @@ from app.cli import DEFAULT_OPENAPI_PATH, build_openapi_document, main
 from app.core.routes import OPERATION_ID_RE, iter_api_routes, validate_routes
 from app.main import OPENAPI_URL, create_app
 from app.settings import Settings
-from tests.helpers import app_client
+from tests.helpers import app_client, extra_client
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -72,8 +72,10 @@ async def test_openapi_is_served_outside_production(app: FastAPI) -> None:
 
 @pytest.mark.parametrize("path", [OPENAPI_URL, "/openapi.json", "/docs", "/redoc"])
 async def test_docs_are_closed_in_production(settings: Settings, path: str) -> None:
+    # Only the route table matters here, so the lifespan is not run (production
+    # startup would also insist on a separate application DB role).
     app = create_app(settings.model_copy(update={"app_env": "production"}))
-    async with app_client(app) as client:
+    async with extra_client(app) as client:
         response = await client.get(path)
     assert response.status_code == 404
 

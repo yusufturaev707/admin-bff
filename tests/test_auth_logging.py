@@ -19,7 +19,7 @@ from tests.helpers import app_client
 async def logged_app(
     settings: Settings, clock: FakeClock, services: Services
 ) -> AsyncIterator[tuple[FastAPI, io.StringIO]]:
-    app = create_app(settings, clock=clock)  # real LogAuditSink
+    app = create_app(settings, clock=clock)  # the real audit sink: DB and its log copy
     stream = io.StringIO()
     configure_logging(settings, stream=stream)
     yield app, stream

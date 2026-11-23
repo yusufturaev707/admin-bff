@@ -50,6 +50,32 @@ def random_key(size: int = 32) -> SecretStr:
     return SecretStr(base64.b64encode(secrets.token_bytes(size)).decode())
 
 
+# The audit tables are append-only even for their owner: the partitions are
+# dropped instead (DROP fires no trigger; the writer recreates them), and the
+# anchors' triggers are switched off for the TRUNCATE. Needs the owner, i.e.
+# the role that ran the migrations of the test database.
+_RESET_AUDIT_SQL = """
+DO $$
+DECLARE r record;
+BEGIN
+    FOR r IN SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+             WHERE i.inhparent = 'audit_log'::regclass LOOP
+        EXECUTE format('DROP TABLE %I', r.relname);
+    END LOOP;
+    IF EXISTS (SELECT 1 FROM audit_anchors) THEN
+        ALTER TABLE audit_anchors DISABLE TRIGGER USER;
+        TRUNCATE audit_anchors;
+        ALTER TABLE audit_anchors ENABLE TRIGGER USER;
+    END IF;
+END
+$$
+"""
+
+
+async def reset_audit(conn: asyncpg.Connection) -> None:
+    await conn.execute(_RESET_AUDIT_SQL)
+
+
 @dataclass(frozen=True)
 class Services:
     db_host: str
@@ -82,6 +108,7 @@ class Services:
         conn = await self.pg_connect()
         try:
             await conn.execute("TRUNCATE admin_users, recovery_codes, roles, permissions CASCADE")
+            await reset_audit(conn)
         finally:
             await conn.close()
         redis = self.redis()
@@ -216,7 +243,7 @@ def audit() -> AuditRecorder:
 async def app(
     settings: Settings, clock: FakeClock, audit: AuditRecorder, services: Services
 ) -> AsyncIterator[FastAPI]:
-    yield create_app(settings, clock=clock, audit_sink=audit)
+    yield create_app(settings, clock=clock, audit_listeners=[audit])
     await services.reset()
 
 

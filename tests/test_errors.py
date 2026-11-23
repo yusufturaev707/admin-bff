@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from app.core.errors import AppError, ErrorCode
 from app.main import create_app
 from app.settings import Settings
+from tests.conftest import Services
 from tests.helpers import app_client
 
 router = APIRouter()
@@ -43,7 +44,7 @@ async def login(body: LoginBody) -> dict[str, str]:
 
 
 @pytest.fixture
-async def error_client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
+async def error_client(settings: Settings, services: Services) -> AsyncIterator[httpx.AsyncClient]:
     app: FastAPI = create_app(settings)
     app.include_router(router)
     # Test-only routes without auth (deny-by-default would refuse them).
@@ -52,6 +53,7 @@ async def error_client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
     )
     async with app_client(app) as client:
         yield client
+    await services.reset()  # the failed POSTs left audit records
 
 
 def _assert_error_shape(response: httpx.Response, status: int, code: str) -> dict[str, object]:

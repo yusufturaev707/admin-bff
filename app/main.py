@@ -4,18 +4,21 @@ Development:  uv run uvicorn --factory app.main:create_app --reload
 Production:   gunicorn -c deploy/gunicorn.conf.py "app.main:create_app()"
 """
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from functools import partial
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app import __version__
 from app.api import health
 from app.api.v1 import admin, me
-from app.audit.sink import AuditSink, LogAuditSink
+from app.audit.middleware import AuditRequestMiddleware
+from app.audit.sink import AuditSink
+from app.audit.writer import DbAuditSink
 from app.auth import router as auth_router
 from app.auth.csrf import OriginCheckMiddleware
 from app.auth.dependencies import CSRF_HEADER
@@ -23,6 +26,7 @@ from app.auth.oneid import OneIdClient, build_oneid_client
 from app.auth.passwords import PasswordService
 from app.auth.service import build_auth_service
 from app.core.db import create_engine, create_sessionmaker, ping_database
+from app.core.db_privileges import audit_privilege_problems
 from app.core.errors import install_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.redis import create_redis, ping_redis
@@ -53,6 +57,28 @@ OPENAPI_TAGS = [
 logger = get_logger(__name__)
 
 
+async def check_audit_privileges(engine: AsyncEngine, settings: Settings) -> None:
+    """Section 9: the service's DB role may only append to the audit log.
+    Production refuses to start otherwise; other environments only warn
+    (development usually runs everything as one role)."""
+    try:
+        problems = await audit_privilege_problems(engine)
+    except Exception as exc:
+        if settings.is_production:
+            raise RuntimeError("cannot check the DB privileges of the audit tables") from exc
+        logger.warning("audit_privileges_unchecked", error=type(exc).__name__)
+        return
+    if not problems:
+        return
+    if settings.is_production:
+        raise RuntimeError(
+            "the application DB role (DB_USER) can modify the audit log: "
+            + "; ".join(problems)
+            + ". Run the migrations as DB_OWNER_USER (README, Deploy)."
+        )
+    logger.warning("audit_privileges_too_broad", problems=problems)
+
+
 def require_explicit_operation_id(route: APIRoute) -> str:
     """operationIds are part of the frontend contract and must never change
     implicitly (e.g. when a function is renamed), so every route sets one."""
@@ -66,7 +92,7 @@ def _lifespan(
     settings: Settings,
     *,
     clock: Clock,
-    audit_sink: AuditSink | None,
+    audit_listeners: Sequence[AuditSink],
     oneid_client: OneIdClient | None,
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
@@ -83,8 +109,9 @@ def _lifespan(
         engine = create_engine(settings)
         redis = create_redis(settings)
         try:
-            audit = audit_sink or LogAuditSink()
+            await check_audit_privileges(engine, settings)
             db = create_sessionmaker(engine)
+            audit = DbAuditSink(db, clock=clock, listeners=audit_listeners)
             auth_service = build_auth_service(
                 settings, db, redis, clock=clock, audit=audit, oneid_client=oneid
             )
@@ -122,10 +149,11 @@ def create_app(
     settings: Settings | None = None,
     *,
     clock: Clock = utcnow,
-    audit_sink: AuditSink | None = None,
+    audit_listeners: Sequence[AuditSink] = (),
     oneid_client: OneIdClient | None = None,
 ) -> FastAPI:
-    """`clock`, `audit_sink` and `oneid_client` are replaced only in tests."""
+    """`clock` and `oneid_client` are replaced only in tests. `audit_listeners`
+    receive a copy of every stored audit event (tests; in-app alerts later)."""
     settings = settings or get_settings()
     configure_logging(settings)
 
@@ -141,7 +169,9 @@ def create_app(
         swagger_ui_oauth2_redirect_url=None,
         openapi_tags=OPENAPI_TAGS,
         generate_unique_id_function=require_explicit_operation_id,
-        lifespan=_lifespan(settings, clock=clock, audit_sink=audit_sink, oneid_client=oneid_client),
+        lifespan=_lifespan(
+            settings, clock=clock, audit_listeners=audit_listeners, oneid_client=oneid_client
+        ),
         debug=False,
     )
     app.state.settings = settings
@@ -151,7 +181,8 @@ def create_app(
     install_exception_handlers(app)
 
     # Starlette wraps middleware in reverse order: the last added is the
-    # outermost. Order from the outside: request id + access log, CORS (so even
+    # outermost. Order from the outside: request id + access log, request-level
+    # audit (sees every status, CSRF rejections included), CORS (so even
     # rejected requests get CORS headers), Origin check (CSRF), the app.
     app.add_middleware(OriginCheckMiddleware, allowed_origin=settings.frontend_origin)
     if settings.frontend_origin is not None:
@@ -170,6 +201,7 @@ def create_app(
             expose_headers=[REQUEST_ID_HEADER],
             max_age=600,
         )
+    app.add_middleware(AuditRequestMiddleware)
     app.add_middleware(RequestContextMiddleware)
 
     app.include_router(health.router)

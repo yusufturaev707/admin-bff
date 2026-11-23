@@ -45,6 +45,8 @@ PrincipalDep = Annotated[Principal, Depends(get_principal)]
 async def _audit_denied(request: Request, principal: Principal, required: list[str]) -> None:
     sink: AuditSink = request.app.state.audit_sink
     meta = await request_meta(request)
+    # The system the request was for: the first segment of the permission.
+    systems = {permission.split(":", 1)[0] for permission in required}
     await sink.write(
         AuditEvent(
             action="rbac.denied",
@@ -55,6 +57,8 @@ async def _audit_denied(request: Request, principal: Principal, required: list[s
             user_agent=meta.user_agent,
             session_hash=principal.session_key,
             request_id=meta.request_id,
+            system_id=systems.pop() if len(systems) == 1 else None,
+            status_code=403,
             details={"method": request.method, "path": request.url.path, "required": required},
         )
     )

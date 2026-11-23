@@ -100,7 +100,16 @@ class AdminService:
     # --- helpers -------------------------------------------------------------
 
     async def _audit(
-        self, action: str, actor: Principal, meta: RequestMeta, **details: Any
+        self,
+        action: str,
+        actor: Principal,
+        meta: RequestMeta,
+        *,
+        resource: str,
+        resource_id: uuid.UUID,
+        before: object = None,
+        after: object = None,
+        **details: Any,
     ) -> None:
         await self._audit_sink.write(
             AuditEvent(
@@ -112,6 +121,11 @@ class AdminService:
                 user_agent=meta.user_agent,
                 session_hash=actor.session_key,
                 request_id=meta.request_id,
+                system_id="admin",
+                resource=resource,
+                resource_id=str(resource_id),
+                before=before,
+                after=after,
                 details=details,
             )
         )
@@ -338,12 +352,16 @@ class AdminService:
             "admin.user.create",
             actor,
             meta,
-            user_id=str(user.id),
-            username=normalized,
-            auth_methods=method_values,
-            roles=sorted(r.name for r in roles),
-            scopes=sorted(f"{t}:{v}" for t, v in set(scopes)),
-            pinfl_masked=user.pinfl_masked,
+            resource="users",
+            resource_id=user.id,
+            after={
+                "username": normalized,
+                "full_name": full_name,
+                "auth_methods": method_values,
+                "roles": sorted(r.name for r in roles),
+                "scopes": sorted(f"{t}:{v}" for t, v in set(scopes)),
+                "pinfl_masked": user.pinfl_masked,
+            },
         )
         return await self._view(user.id), password
 
@@ -403,7 +421,8 @@ class AdminService:
             "admin.user.update",
             actor,
             meta,
-            user_id=str(user_id),
+            resource="users",
+            resource_id=user_id,
             before=before,
             after={
                 "full_name": view.user.full_name,
@@ -443,7 +462,8 @@ class AdminService:
             "admin.user.roles",
             actor,
             meta,
-            user_id=str(user_id),
+            resource="users",
+            resource_id=user_id,
             before=before,
             after=sorted(r.name for r in roles),
         )
@@ -470,7 +490,8 @@ class AdminService:
             "admin.user.scopes",
             actor,
             meta,
-            user_id=str(user_id),
+            resource="users",
+            resource_id=user_id,
             before=[f"{t}:{v}" for t, v in before],
             after=[f"{t}:{v}" for t, v in wanted],
         )
@@ -486,7 +507,9 @@ class AdminService:
             user.password_hash = await self._passwords.hash(password)
             user.must_change_password = True
         await self._after_change([], revoke=[user_id])
-        await self._audit("admin.user.password_reset", actor, meta, user_id=str(user_id))
+        await self._audit(
+            "admin.user.password_reset", actor, meta, resource="users", resource_id=user_id
+        )
         return password
 
     async def reset_totp(self, actor: Principal, meta: RequestMeta, user_id: uuid.UUID) -> None:
@@ -498,13 +521,22 @@ class AdminService:
             user.totp_last_timecode = None
             await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
         await self._after_change([], revoke=[user_id])
-        await self._audit("admin.user.totp_reset", actor, meta, user_id=str(user_id))
+        await self._audit(
+            "admin.user.totp_reset", actor, meta, resource="users", resource_id=user_id
+        )
 
     async def unlock(self, actor: Principal, meta: RequestMeta, user_id: uuid.UUID) -> None:
         async with self._db() as db:
             user = await self._user_or_404(db, user_id)
         removed = await self._limiter.unlock(username=user.username)
-        await self._audit("auth.unlock", actor, meta, user_id=str(user_id), removed_keys=removed)
+        await self._audit(
+            "auth.unlock",
+            actor,
+            meta,
+            resource="users",
+            resource_id=user_id,
+            removed_keys=removed,
+        )
 
     # --- roles ---------------------------------------------------------------
 
@@ -570,9 +602,9 @@ class AdminService:
             "admin.role.create",
             actor,
             meta,
-            role_id=str(role.id),
-            name=role.name,
-            permissions=patterns,
+            resource="roles",
+            resource_id=role.id,
+            after={"name": role.name, "description": description, "permissions": patterns},
         )
         return await self.get_role(role.id)
 
@@ -631,7 +663,8 @@ class AdminService:
             "admin.role.update",
             actor,
             meta,
-            role_id=str(role_id),
+            resource="roles",
+            resource_id=role_id,
             before=before,
             after={
                 "name": view.role.name,
@@ -661,7 +694,11 @@ class AdminService:
             "admin.role.delete",
             actor,
             meta,
-            role_id=str(role_id),
-            name=role.name,
-            permissions=permissions,
+            resource="roles",
+            resource_id=role_id,
+            before={
+                "name": role.name,
+                "description": role.description,
+                "permissions": permissions,
+            },
         )

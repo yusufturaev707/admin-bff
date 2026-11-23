@@ -68,7 +68,7 @@ async def oneid_client(
     audit: AuditRecorder,
     services: Services,
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
-    app = create_app(oneid_settings, clock=clock, audit_sink=audit, oneid_client=oneid)
+    app = create_app(oneid_settings, clock=clock, audit_listeners=[audit], oneid_client=oneid)
     async with app_client(app) as client:
         yield app, client
     await services.reset()

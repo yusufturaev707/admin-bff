@@ -15,6 +15,7 @@ from typing import Annotated
 import structlog
 from fastapi import Depends, Request, Response
 
+from app.audit.context import set_actor as set_audit_actor
 from app.auth.csrf import UNSAFE_METHODS
 from app.auth.service import AuthService, RequestMeta
 from app.auth.sessions import SessionData
@@ -80,6 +81,8 @@ async def current_session(request: Request, service: AuthServiceDep) -> SessionD
     session = await service.sessions.load(session_id)
     if session is None:
         raise AppError(ErrorCode.SESSION_EXPIRED, headers={"Set-Cookie": _CLEAR_SESSION_COOKIE})
+    # Known before the CSRF check: a rejected request is audited with its admin.
+    set_audit_actor(session.user_id, session.username, session.key)
     if request.method in UNSAFE_METHODS:
         token = request.headers.get(CSRF_HEADER, "")
         # Header values are latin-1 strings; bytes keep compare_digest total.

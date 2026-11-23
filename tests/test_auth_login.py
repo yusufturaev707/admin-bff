@@ -273,7 +273,7 @@ async def test_password_hash_is_upgraded_on_login(
 ) -> None:
     admin = await create_admin(settings, clock)  # hashed with t=1
     stronger = settings.model_copy(update={"argon2_time_cost": 2})
-    app = create_app(stronger, clock=clock, audit_sink=audit)
+    app = create_app(stronger, clock=clock, audit_listeners=[audit])
     try:
         async with app_client(app) as client:
             assert (await start_login(client, admin)).status_code == 200
@@ -295,7 +295,7 @@ async def test_undecryptable_totp_secret_is_a_server_error(
 ) -> None:
     admin = await create_admin(settings, clock)
     misconfigured = settings.model_copy(update={"totp_enc_key": random_key()})
-    app = create_app(misconfigured, clock=clock, audit_sink=audit)
+    app = create_app(misconfigured, clock=clock, audit_listeners=[audit])
     try:
         async with app_client(app) as client:
             token = (await start_login(client, admin)).json()["mfa_token"]
