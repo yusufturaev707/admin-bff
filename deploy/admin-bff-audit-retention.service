@@ -1,0 +1,70 @@
+# /etc/systemd/system/admin-bff-audit-retention.service
+#
+# Audit log retention (9-bo'lim): har kuni admin-bff-audit-retention.timer ishga
+# tushiradi.
+#   1. audit-retention: keyingi oy partition'ini oldindan yaratadi va to'liq 90
+#      kundan (AUDIT_RETENTION_DAYS) eski oylik partition'larni o'chiradi.
+#      O'chirishdan oldin har birining oxirgi yozuvi audit_anchors'ga yoziladi,
+#      o'chirishning o'zi esa audit'ga.
+#   2. verify-audit: hash zanjirini tekshiradi. Zanjir buzilgan bo'lsa, unit
+#      "failed" holatiga o'tadi (systemctl --failed, journalctl -u ...).
+#
+# Ilova roli (DB_USER) bilan ishlaydi: partition'larni faqat owner'ning
+# SECURITY DEFINER funksiyalari yaratadi va o'chiradi, 90 kundan kam muddatga
+# ruxsat bermaydi.
+#
+# O'rnatish:
+#   cp deploy/admin-bff-audit-retention.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now admin-bff-audit-retention.timer
+# Qo'lda ishga tushirish: systemctl start admin-bff-audit-retention.service
+
+[Unit]
+Description=UZBMB Admin BFF: audit retention and chain check
+Documentation=file:///opt/admin-bff/docs/security.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=admin-bff
+Group=admin-bff
+WorkingDirectory=/opt/admin-bff
+EnvironmentFile=/etc/admin-bff/admin-bff.env
+Environment=APP_ENV=production PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# Faqat DB paroli kerak.
+LoadCredential=db_password:/etc/admin-bff/credentials/db_password
+ExecStart=/opt/admin-bff/.venv/bin/python -m app.cli audit-retention
+ExecStart=/opt/admin-bff/.venv/bin/python -m app.cli verify-audit
+TimeoutStartSec=30min
+
+# --- Hardening (admin-bff.service bilan bir xil) ---
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+UMask=0077
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=512M

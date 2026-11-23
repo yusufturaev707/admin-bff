@@ -3,9 +3,13 @@
 # O'rnatish (bir marta):
 #   useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin admin-bff
 #   usermod -aG admin-bff www-data          # Nginx socket'ga guruh orqali kiradi
+#   # PostgreSQL: ikki rol (README, "PostgreSQL rollari"). admin_bff_owner sxemani
+#   # yaratadi (migratsiyalar), admin_bff servisning o'zi: u audit log'ni
+#   # o'zgartira olmaydi. Aks holda servis production'da ishga tushmaydi.
 #   install -d -o root -g root -m 0700 /etc/admin-bff/credentials
 #   # har bir secret alohida faylda, root:root 0600:
-#   #   /etc/admin-bff/credentials/db_password
+#   #   /etc/admin-bff/credentials/db_password        (admin_bff roli)
+#   #   /etc/admin-bff/credentials/db_owner_password  (admin_bff_owner; faqat deploy.sh)
 #   #   /etc/admin-bff/credentials/redis_password
 #   #   /etc/admin-bff/credentials/totp_enc_key     (32 bayt, base64)
 #   #   /etc/admin-bff/credentials/pinfl_hmac_key   (32+ bayt, base64)
@@ -15,7 +19,9 @@
 #   # Kalitlarning zaxira nusxasi, rotatsiyasi va yo'qolganda nima qilish:
 #   # docs/security.md ("Kalitlar").
 #   cp deploy/admin-bff.env.example /etc/admin-bff/admin-bff.env   # root:root 0640
+#   cp deploy/admin-bff-audit-retention.{service,timer} /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable --now admin-bff
+#   systemctl enable --now admin-bff-audit-retention.timer       # 9-bo'lim, har kuni
 #
 # Tekshirish: systemd-analyze security admin-bff
 
@@ -37,7 +43,9 @@ EnvironmentFile=/etc/admin-bff/admin-bff.env
 Environment=APP_ENV=production PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
 # Secret'lar: ilova ularni $CREDENTIALS_DIRECTORY'dan o'qiydi (pydantic-settings
-# secrets_dir). Fayl nomi = sozlama nomi. Keyingi bosqichlarda qo'shiladi:
+# secrets_dir). Fayl nomi = sozlama nomi. db_owner_password bu yerda yo'q va
+# bo'lmasligi kerak: servis audit jadvallarini o'zgartira olmasin (9-bo'lim).
+# Keyingi bosqichlarda qo'shiladi:
 #   LoadCredential=jwt_private_key:/etc/admin-bff/credentials/jwt_private_key (4-bosqich)
 #   LoadCredential=oneid_client_secret:/etc/admin-bff/credentials/oneid_client_secret
 #     (OneID integratsiyasi, TODO(owner))

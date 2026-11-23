@@ -13,14 +13,22 @@ Commands:
     reset-totp         clears TOTP and recovery codes of one admin (--username)
                        or of everyone (--all --yes, if TOTP_ENC_KEY is lost);
                        they enroll again at the next sign-in.
+    verify-audit       checks the audit hash chain; exits with 1 if it is broken.
+    audit-retention    daily (systemd timer): creates the next audit partition
+                       and drops whole partitions older than AUDIT_RETENTION_DAYS.
 
-Later phases add: rotate-keys, verify-audit.
+Every command that changes something is audited like a request (actor "cli",
+plus the operating system user who ran it).
+
+Phase 4 adds: rotate-keys.
 """
 
 import argparse
 import asyncio
+import dataclasses
 import getpass
 import json
+import os
 import sys
 import uuid
 from collections.abc import Sequence
@@ -30,7 +38,9 @@ from redis.asyncio import Redis
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.audit.sink import AuditEvent, AuditOutcome, LogAuditSink
+from app.audit.sink import AuditEvent, AuditOutcome
+from app.audit.verify import apply_retention, verify_chain
+from app.audit.writer import DbAuditSink
 from app.auth.crypto import DecryptionError, SecretBox
 from app.auth.lockout import LoginLimiter
 from app.auth.models import AdminUser, AuthMethod, RecoveryCode, normalize_username
@@ -62,6 +72,26 @@ def _out(message: str) -> None:
 
 def _err(message: str) -> None:
     sys.stderr.write(message + "\n")
+
+
+def _os_user() -> str | None:
+    """Who ran the command: the sudo caller rather than root, if known."""
+    try:
+        return os.environ.get("SUDO_USER") or getpass.getuser()
+    except (OSError, KeyError):  # no name for the uid (e.g. a bare container)
+        return None
+
+
+async def _audit(settings: Settings, event: AuditEvent) -> None:
+    """Appends a CLI event to the audit chain (and its journald copy)."""
+    event = dataclasses.replace(
+        event, actor_username="cli", details={**event.details, "os_user": _os_user()}
+    )
+    engine = create_engine(settings)
+    try:
+        await DbAuditSink(create_sessionmaker(engine), clock=utcnow).write(event)
+    finally:
+        await engine.dispose()
 
 
 def _sessions(settings: Settings, redis: Redis) -> SessionStore:
@@ -205,13 +235,16 @@ async def create_superadmin(username_raw: str, *, existing: bool = False) -> int
                 await _sessions(settings, redis).delete_all_for_user(user.id)
             finally:
                 await redis.aclose()
-        await LogAuditSink().write(
+        await _audit(
+            settings,
             AuditEvent(
                 action="admin.superadmin.create",
                 outcome=AuditOutcome.SUCCESS,
-                actor_username="cli",
-                details={"user_id": str(user.id), "username": username, "existing": existing},
-            )
+                system_id="admin",
+                resource="users",
+                resource_id=str(user.id),
+                details={"username": username, "existing": existing},
+            ),
         )
     finally:
         await engine.dispose()
@@ -262,13 +295,15 @@ async def sync_permissions() -> int:
             await _superadmin_role(db)
     finally:
         await engine.dispose()
-    await LogAuditSink().write(
+    await _audit(
+        settings,
         AuditEvent(
             action="rbac.permissions.sync",
             outcome=AuditOutcome.SUCCESS,
-            actor_username="cli",
+            system_id="admin",
+            resource="permissions",
             details={"added": added, "updated": updated, "removed": removed},
-        )
+        ),
     )
     _out(
         f"Permission'lar: {len(declared)} ta, yangi {len(added)}, o'zgargan {len(updated)}, "
@@ -299,13 +334,13 @@ async def unlock_login(username_raw: str | None, ip: str | None) -> int:
         )
     finally:
         await redis.aclose()
-    await LogAuditSink().write(
+    await _audit(
+        settings,
         AuditEvent(
             action="auth.unlock",
             outcome=AuditOutcome.SUCCESS,
-            actor_username="cli",
             details={"username": username, "ip": ip, "removed_keys": removed},
-        )
+        ),
     )
     _out("Blok olib tashlandi." if removed else "Faol blok topilmadi.")
     return 0
@@ -340,13 +375,13 @@ async def reencrypt_totp() -> int:
                 updated += 1
     finally:
         await engine.dispose()
-    await LogAuditSink().write(
+    await _audit(
+        settings,
         AuditEvent(
             action="auth.totp.reencrypt",
             outcome=AuditOutcome.ERROR if failed else AuditOutcome.SUCCESS,
-            actor_username="cli",
             details={"updated": updated, "unchanged": unchanged, "failed": failed},
-        )
+        ),
     )
     _out(f"Qayta shifrlandi: {updated}, o'zgarmadi: {unchanged}, ochib bo'lmadi: {len(failed)}.")
     if failed:
@@ -398,13 +433,13 @@ async def reset_totp(username_raw: str | None, *, everyone: bool, confirmed: boo
     finally:
         await redis.aclose()
         await engine.dispose()
-    await LogAuditSink().write(
+    await _audit(
+        settings,
         AuditEvent(
             action="auth.totp.reset",
             outcome=AuditOutcome.SUCCESS,
-            actor_username="cli",
             details={"all": everyone, "usernames": [u.username for u in users]},
-        )
+        ),
     )
     _out(
         f"{len(users)} ta adminning TOTP'i o'chirildi, sessiyalari tugatildi. "
@@ -415,6 +450,83 @@ async def reset_totp(username_raw: str | None, *, everyone: bool, confirmed: boo
 
 def _reset_totp(args: argparse.Namespace) -> int:
     return asyncio.run(reset_totp(args.username, everyone=args.all, confirmed=args.yes))
+
+
+async def verify_audit() -> int:
+    settings = load_settings()
+    engine = create_engine(settings)
+    try:
+        result = await verify_chain(create_sessionmaker(engine))
+    finally:
+        await engine.dispose()
+    start = f"anchor #{result.anchor_id} dan" if result.anchor_id else "boshidan"
+    if result.ok:
+        _out(f"Audit zanjiri butun: {result.checked} ta yozuv tekshirildi ({start}).")
+        if result.last_id is not None:
+            _out(f"Oxirgi yozuv: id={result.last_id}, hash={result.last_hash}")
+            _out("Uni journald'dagi nusxa bilan solishtiring (docs/security.md).")
+    else:
+        _err(f"XATO: audit zanjiri buzilgan ({start} tekshirildi):")
+        for problem in result.problems:
+            _err(f"  id={problem.record_id} [{problem.kind}]: {problem.message}")
+    await _audit(
+        settings,
+        AuditEvent(
+            action="audit.chain.verify",
+            outcome=AuditOutcome.SUCCESS if result.ok else AuditOutcome.ERROR,
+            resource="logs",
+            details={
+                "checked": result.checked,
+                "anchor_id": result.anchor_id,
+                "first_id": result.first_id,
+                "last_id": result.last_id,
+                "last_hash": result.last_hash,
+                "problems": [{"id": p.record_id, "kind": p.kind} for p in result.problems],
+            },
+        ),
+    )
+    return 0 if result.ok else 1
+
+
+def _verify_audit(args: argparse.Namespace) -> int:
+    return asyncio.run(verify_audit())
+
+
+async def audit_retention() -> int:
+    settings = load_settings()
+    engine = create_engine(settings)
+    try:
+        dropped = await apply_retention(
+            create_sessionmaker(engine), retention_days=settings.audit_retention_days
+        )
+    finally:
+        await engine.dispose()
+    for partition in dropped:
+        await _audit(
+            settings,
+            AuditEvent(
+                action="audit.partition.drop",
+                outcome=AuditOutcome.SUCCESS,
+                resource="partitions",
+                resource_id=partition.name,
+                details={
+                    "rows": partition.rows,
+                    "anchor_last_id": partition.last_id,
+                    "anchor_last_hash": partition.last_hash,
+                    "retention_days": settings.audit_retention_days,
+                },
+            ),
+        )
+        _out(f"O'chirildi: {partition.name} ({partition.rows} ta yozuv)")
+    _out(
+        f"Audit retention ({settings.audit_retention_days} kun): "
+        f"{len(dropped)} ta partition o'chirildi."
+    )
+    return 0
+
+
+def _audit_retention(args: argparse.Namespace) -> int:
+    return asyncio.run(audit_retention())
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -451,6 +563,14 @@ def build_parser() -> argparse.ArgumentParser:
     reset.add_argument("--all", action="store_true", help="barcha adminlar (kalit yo'qolganda)")
     reset.add_argument("--yes", action="store_true", help="--all ni tasdiqlash")
     reset.set_defaults(handler=_reset_totp)
+
+    verify = commands.add_parser("verify-audit", help="audit hash zanjirini tekshirish")
+    verify.set_defaults(handler=_verify_audit)
+
+    retention = commands.add_parser(
+        "audit-retention", help="eski audit partition'larini o'chirish (har kuni, systemd timer)"
+    )
+    retention.set_defaults(handler=_audit_retention)
     return parser
 
 
