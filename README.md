@@ -10,9 +10,15 @@ Frontend uchun qo'llanma: [`docs/frontend.md`](docs/frontend.md).
 
 ## Talablar
 
-- Python 3.12+
+- Python 3.13 (`.python-version`)
 - [uv](https://docs.astral.sh/uv/)
-- PostgreSQL 16+ va Redis 7 (lokal o'rnatilgan, Docker ishlatilmaydi)
+- PostgreSQL 16+ va Redis 7+ (lokal o'rnatilgan, Docker ishlatilmaydi)
+
+Serverlar: **Debian 13 (trixie)**. Uning paketlari talablarga mos keladi:
+Python 3.13, PostgreSQL 17 va nginx 1.26. `http2 on;` sintaksisi nginx
+1.25.1'dan beri ishlaydi. Redis versiyasini o'rnatishdan oldin
+`apt policy redis-server` bilan tekshiring, kamida 7 bo'lishi kerak.
+Python serverga alohida o'rnatilmaydi, tizimdagi `python3.13` ishlatiladi.
 
 ## Lokal ishga tushirish
 
