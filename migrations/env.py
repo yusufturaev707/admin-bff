@@ -8,22 +8,28 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy.engine import Connection
+from sqlalchemy.engine import URL, Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import app.auth.models  # noqa: F401  (registers the tables on Base.metadata)
 from app.core.db import Base, database_url
 from app.settings import load_settings
 
 config = context.config
-if config.config_file_name is not None:
+if config.config_file_name is not None and not config.attributes.get("skip_logging_config"):
     fileConfig(config.config_file_name)
 
-# Models register themselves on Base.metadata when imported (Phase 1+).
 target_metadata = Base.metadata
 
 
+def _url() -> URL:
+    # Tests pass the URL of their temporary database programmatically.
+    url = config.attributes.get("database_url")
+    return url if isinstance(url, URL) else database_url(load_settings())
+
+
 def run_migrations_offline() -> None:
-    url = database_url(load_settings()).render_as_string(hide_password=True)
+    url = _url().render_as_string(hide_password=True)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -41,7 +47,7 @@ def _run_sync(connection: Connection) -> None:
 
 
 async def run_migrations_online() -> None:
-    engine = create_async_engine(database_url(load_settings()))
+    engine = create_async_engine(_url())
     async with engine.connect() as connection:
         await connection.run_sync(_run_sync)
     await engine.dispose()
