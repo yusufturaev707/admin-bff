@@ -2,7 +2,7 @@
 
 Every API route must either be on the public list or depend on a guard
 (`require(...)`, `require_any(...)`, `get_principal`, `require_authenticated`,
-`current_session`, `require_recent_mfa`). Every permission a guard names must
+`current_session`). Every permission a guard names must
 be declared in the registry. Otherwise `RuntimeError` stops the startup.
 """
 
@@ -16,7 +16,6 @@ from app.rbac.registry import PermissionRegistry
 PUBLIC_PATHS = frozenset(
     {
         "/api/v1/auth/login",
-        "/api/v1/auth/mfa",
         "/api/v1/auth/oneid/start",
         "/api/v1/auth/oneid/callback",
         "/health",

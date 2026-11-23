@@ -3,7 +3,7 @@
 * `GET /api/v1/audit`: filters + cursor pagination, newest first
   (`audit:logs:read`). Not audited itself: an ordinary read.
 * `POST /api/v1/audit/export`: CSV of the same filters (`audit:logs:export`,
-  step-up, 5 per hour, audited). POST, so the CSRF token protects it.
+  5 per hour, audited). POST, so the CSRF token protects it.
 """
 
 import uuid
@@ -37,7 +37,7 @@ from app.core.pagination import (
     known_query_params,
 )
 from app.core.time import Clock
-from app.rbac.dependencies import require, require_recent_mfa
+from app.rbac.dependencies import require
 from app.rbac.principal import Principal
 
 _LIST_PARAMS = (
@@ -132,11 +132,10 @@ async def list_logs(
     operation_id="audit_logs_export",
     summary="Audit log'ni CSV faylga eksport qilish",
     description=(
-        "TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak (step-up). Bir soatda ko'pi bilan "
+        "Bir soatda ko'pi bilan "
         "5 ta eksport, bitta faylda ko'pi bilan 100 000 yozuv. Fayl UTF-8 (BOM bilan), "
         "eskisi birinchi."
     ),
-    dependencies=[Depends(require_recent_mfa(300))],
     response_class=StreamingResponse,
     responses={
         200: {

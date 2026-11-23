@@ -10,7 +10,7 @@ from app.auth.dependencies import SESSION_COOKIE
 from app.core.logging import configure_logging
 from app.main import create_app
 from app.settings import Settings
-from tests.auth_helpers import AUTH, create_admin, random_password, totp_code
+from tests.auth_helpers import AUTH, create_admin, random_password
 from tests.conftest import FakeClock, Services
 from tests.helpers import app_client
 
@@ -36,12 +36,9 @@ async def test_auth_secrets_are_not_logged(
         await client.post(
             f"{AUTH}/login", json={"username": admin.username, "password": wrong_password}
         )
-        start = await client.post(
+        done = await client.post(
             f"{AUTH}/login", json={"username": admin.username, "password": admin.password}
         )
-        mfa_token = start.json()["mfa_token"]
-        code = totp_code(admin, clock)
-        done = await client.post(f"{AUTH}/mfa", json={"mfa_token": mfa_token, "code": code})
         csrf_token = done.json()["csrf_token"]
         session_id = client.cookies.get(SESSION_COOKIE)
         await client.post(f"{AUTH}/logout", headers={"X-CSRF-Token": csrf_token})
@@ -49,7 +46,5 @@ async def test_auth_secrets_are_not_logged(
     output = stream.getvalue()
     assert '"action": "auth.login"' in output  # audit events are logged
     assert session_id
-    for secret in (admin.password, wrong_password, mfa_token, csrf_token, session_id):
+    for secret in (admin.password, wrong_password, csrf_token, session_id):
         assert secret not in output
-    # Six digits may occur by chance inside a timestamp; a logged code would be a value.
-    assert f'"{code}"' not in output

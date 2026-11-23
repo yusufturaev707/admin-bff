@@ -15,7 +15,7 @@ from app.auth.oneid import OneIdError, OneIdIdentity
 from app.auth.router import ONEID_STATE_COOKIE
 from app.main import create_app
 from app.settings import Settings
-from tests.auth_helpers import AUTH, create_admin, totp_code
+from tests.auth_helpers import AUTH, create_admin
 from tests.conftest import AuditRecorder, FakeClock, Services
 from tests.helpers import FRONTEND_ORIGIN, app_client, extra_client
 
@@ -102,7 +102,7 @@ async def test_oneid_is_off_by_default(client: httpx.AsyncClient) -> None:
         assert response.json()["error"]["code"] == "not_found"
 
 
-async def test_oneid_login_then_totp(
+async def test_oneid_login(
     oneid_client: tuple[FastAPI, httpx.AsyncClient],
     oneid: FakeOneIdClient,
     oneid_settings: Settings,
@@ -118,21 +118,14 @@ async def test_oneid_login_then_totp(
         f"{AUTH}/oneid/callback", params={"code": "good-code", "state": state}
     )
     assert callback.status_code == 302
-    location = callback.headers["location"]
-    assert location.startswith(f"{FRONTEND_ORIGIN}/login/mfa#mfa_token=")
-    assert SESSION_COOKIE not in callback.cookies  # TOTP is still required
-    mfa_token = location.split("#mfa_token=", 1)[1]
-
-    done = await client.post(
-        f"{AUTH}/mfa", json={"mfa_token": mfa_token, "code": totp_code(admin, clock)}
-    )
-    assert done.status_code == 200
+    assert callback.headers["location"] == f"{FRONTEND_ORIGIN}/"
+    assert SESSION_COOKIE in callback.cookies
     session = await client.get(f"{AUTH}/session")
     assert session.json()["auth_method"] == "oneid"
     assert session.json()["username"] == admin.username
 
 
-async def test_oneid_without_totp_starts_a_setup_session(
+async def test_oneid_first_sign_in_with_a_password_to_change(
     oneid_client: tuple[FastAPI, httpx.AsyncClient],
     oneid: FakeOneIdClient,
     oneid_settings: Settings,
@@ -140,15 +133,20 @@ async def test_oneid_without_totp_starts_a_setup_session(
 ) -> None:
     _, client = oneid_client
     pinfl = random_pinfl()
-    await create_admin(oneid_settings, clock, methods=("oneid",), pinfl=pinfl, totp=False)
+    await create_admin(
+        oneid_settings,
+        clock,
+        methods=("password", "oneid"),
+        pinfl=pinfl,
+        must_change_password=True,
+    )
     oneid.codes["code"] = pinfl
 
     state = await _start(client)
     callback = await client.get(f"{AUTH}/oneid/callback", params={"code": "code", "state": state})
     assert callback.headers["location"] == f"{FRONTEND_ORIGIN}/login/setup"
     session = (await client.get(f"{AUTH}/session")).json()
-    # A OneID-only admin has no password, so only TOTP enrollment is pending.
-    assert session["pending"] == ["totp_enrollment"]
+    assert session["pending"] == ["password_change"]
 
 
 async def test_oneid_state_must_match_the_browser_and_is_single_use(
@@ -174,7 +172,7 @@ async def test_oneid_state_must_match_the_browser_and_is_single_use(
 
     state = await _start(client)
     first = await client.get(f"{AUTH}/oneid/callback", params={"code": "code", "state": state})
-    assert first.headers["location"].startswith(f"{FRONTEND_ORIGIN}/login/mfa#")
+    assert first.headers["location"] == f"{FRONTEND_ORIGIN}/"
     client.cookies.set(ONEID_STATE_COOKIE, state, domain="testserver")
     replay = await client.get(f"{AUTH}/oneid/callback", params={"code": "code", "state": state})
     assert _error_redirect(replay)

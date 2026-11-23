@@ -12,7 +12,6 @@ import json
 import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 
 from redis.asyncio import Redis
 from sqlalchemy import select, update
@@ -45,7 +44,6 @@ class Principal:
     permissions: frozenset[str]  # granted patterns (exact codes or wildcards)
     scopes: Mapping[str, frozenset[str]] = field(default_factory=dict)
     perm_version: int = 0
-    mfa_at: datetime | None = None
     session_key: str = ""
 
     def has(self, permission: str) -> bool:
@@ -112,7 +110,6 @@ class PrincipalLoader:
                     permissions=frozenset(data["permissions"]),
                     scopes={k: frozenset(v) for k, v in data["scopes"].items()},
                     perm_version=version,
-                    mfa_at=session.mfa_at,
                     session_key=session.key,
                 )
         principal = await self._load_from_db(session.user_id)
@@ -124,7 +121,7 @@ class PrincipalLoader:
             ex=PRINCIPAL_TTL_S,
         )
         await self._publish_one(session.user_id, principal.perm_version)
-        return replace(principal, mfa_at=session.mfa_at, session_key=session.key)
+        return replace(principal, session_key=session.key)
 
     async def _publish_one(self, user_id: uuid.UUID, version: int) -> None:
         await self._set_max(keys=[self._version_key(user_id)], args=[version, PERM_VERSION_TTL_S])

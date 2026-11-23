@@ -96,22 +96,9 @@ class Settings(BaseSettings):
     ready_timeout_s: float = Field(default=2.0, gt=0, le=10)
 
     # --- Auth (section 6) ---
-    # AES-256-GCM key for TOTP secrets: base64 of 32 random bytes.
-    # Production: systemd credential `totp_enc_key`.
-    totp_enc_key: SecretStr | None = None
-    # Only while rotating the key (docs/security.md): the old key, used for
-    # decryption until `cli reencrypt-totp` has finished. Credential
-    # `totp_enc_key_previous`.
-    totp_enc_key_previous: SecretStr | None = None
     # HMAC-SHA256 key for looking up an admin by PINFL (OneID): base64, >= 32 bytes.
     # Production: systemd credential `pinfl_hmac_key`.
     pinfl_hmac_key: SecretStr | None = None
-    totp_issuer: str = Field(default="UZBMB Admin", min_length=1, max_length=64)
-    # Second factor at sign-in and step-up (section 6). `false`: password alone
-    # opens a full session and no step-up is asked. The owner turned it off,
-    # production included, on 2026-11-23; startup logs a warning while it is off.
-    totp_required: bool = True
-
     session_idle_timeout_s: int = Field(default=30 * 60, ge=60, le=24 * 3600)
     # Requests per session per minute (section 11); over it: 429 rate_limited.
     session_requests_per_minute: int = Field(default=300, ge=10, le=10_000)
@@ -135,29 +122,12 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.app_env == "production"
 
-    def totp_key(self) -> bytes:
-        if self.totp_enc_key is None:
-            raise RuntimeError("TOTP_ENC_KEY is not configured (systemd credential totp_enc_key)")
-        return decode_key(self.totp_enc_key, min_bytes=32, max_bytes=32)
-
-    def totp_previous_keys(self) -> list[bytes]:
-        if self.totp_enc_key_previous is None:
-            return []
-        return [decode_key(self.totp_enc_key_previous, min_bytes=32, max_bytes=32)]
-
     def pinfl_key(self) -> bytes:
         if self.pinfl_hmac_key is None:
             raise RuntimeError(
                 "PINFL_HMAC_KEY is not configured (systemd credential pinfl_hmac_key)"
             )
         return decode_key(self.pinfl_hmac_key, min_bytes=32)
-
-    @field_validator("totp_enc_key", "totp_enc_key_previous")
-    @classmethod
-    def _validate_totp_key(cls, value: SecretStr | None) -> SecretStr | None:
-        if value is not None:
-            decode_key(value, min_bytes=32, max_bytes=32)
-        return value
 
     @field_validator("pinfl_hmac_key")
     @classmethod

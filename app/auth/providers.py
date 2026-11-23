@@ -1,8 +1,7 @@
 """`AuthProvider`: the primary sign-in methods (architecture decision 4).
 
-Each provider checks one primary method and returns the admin. The second
-factor (TOTP or a recovery code) is the same for every provider. A future
-OIDC provider is one more class here; sessions, CSRF and RBAC do not change.
+Each provider checks one sign-in method and returns the admin. A future OIDC
+provider is one more class here; sessions, CSRF and RBAC do not change.
 """
 
 from abc import ABC, abstractmethod
@@ -16,7 +15,6 @@ from app.auth.crypto import hmac_sha256_hex
 from app.auth.models import AdminUser, AuthMethod, normalize_username
 from app.auth.oneid import OneIdClient, OneIdError
 from app.auth.passwords import PasswordService
-from app.auth.second_factor import SecondFactor, SecondFactorVerifier
 
 
 class AuthFailedError(Exception):
@@ -42,24 +40,15 @@ class OneIdCredentials:
 class AuthProvider[CredentialsT](ABC):
     method: ClassVar[AuthMethod]
 
-    def __init__(self, second_factor: SecondFactorVerifier) -> None:
-        self._second_factor = second_factor
-
     @abstractmethod
     async def authenticate(self, db: AsyncSession, credentials: CredentialsT) -> AdminUser:
         """Returns the active admin allowed to use this method, or raises AuthFailedError."""
-
-    async def verify_second_factor(
-        self, db: AsyncSession, user: AdminUser, factor: SecondFactor
-    ) -> bool:
-        return await self._second_factor.verify(db, user, factor)
 
 
 class LocalAuthProvider(AuthProvider[PasswordCredentials]):
     method = AuthMethod.PASSWORD
 
-    def __init__(self, second_factor: SecondFactorVerifier, passwords: PasswordService) -> None:
-        super().__init__(second_factor)
+    def __init__(self, passwords: PasswordService) -> None:
         self._passwords = passwords
 
     async def authenticate(self, db: AsyncSession, credentials: PasswordCredentials) -> AdminUser:
@@ -93,10 +82,7 @@ class OneIdAuthProvider(AuthProvider[OneIdCredentials]):
 
     method = AuthMethod.ONEID
 
-    def __init__(
-        self, second_factor: SecondFactorVerifier, client: OneIdClient, pinfl_key: bytes
-    ) -> None:
-        super().__init__(second_factor)
+    def __init__(self, client: OneIdClient, pinfl_key: bytes) -> None:
         self._client = client
         self._pinfl_key = pinfl_key
 

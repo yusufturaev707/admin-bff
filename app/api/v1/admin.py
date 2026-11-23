@@ -1,7 +1,6 @@
 """/api/v1/admin: admins, roles, permissions (section 7).
 
-Every change additionally needs a recent TOTP (step-up, 5 minutes): these
-endpoints decide who may do what in every connected system.
+Every change is audited with its before/after state (section 9).
 """
 
 import uuid
@@ -12,7 +11,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from app.auth.dependencies import RequestMetaDep
 from app.core.errors import ErrorResponse
 from app.core.pagination import Page, PageParamsDep, known_query_params
-from app.rbac.dependencies import require, require_recent_mfa
+from app.rbac.dependencies import require
 from app.rbac.principal import Principal
 from app.rbac.schemas import (
     PasswordReset,
@@ -34,8 +33,6 @@ from app.rbac.schemas import (
     UserUpdated,
 )
 from app.rbac.service import AdminService, RoleView, UserFilters, UserView
-
-STEP_UP = Depends(require_recent_mfa(300))
 
 
 async def _no_store(response: Response) -> None:
@@ -71,7 +68,6 @@ def user_out(view: UserView) -> dict[str, Any]:
         "full_name": user.full_name,
         "is_active": user.is_active,
         "auth_methods": list(user.auth_methods),
-        "totp_enabled": user.totp_enabled,
         "must_change_password": user.must_change_password,
         "pinfl_masked": user.pinfl_masked,
         "roles": [RoleRef(id=r.id, name=r.name) for r in view.roles],
@@ -135,7 +131,6 @@ async def list_users(
     status_code=201,
     operation_id="admin_users_create",
     summary="Admin yaratish",
-    dependencies=[STEP_UP],
     responses=_errors(401, 403, 409, 422),
 )
 async def create_user(
@@ -168,7 +163,6 @@ async def get_user(user_id: uuid.UUID, _: UsersRead, service: AdminServiceDep) -
     "/users/{user_id}",
     operation_id="admin_users_update",
     summary="Adminni tahrirlash yoki bloklash",
-    dependencies=[STEP_UP],
     responses=_errors(401, 403, 404, 409, 422),
 )
 async def update_user(
@@ -187,7 +181,6 @@ async def update_user(
     "/users/{user_id}/roles",
     operation_id="admin_user_roles_update",
     summary="Adminning rollarini belgilash",
-    dependencies=[STEP_UP],
     responses=_errors(401, 403, 404, 409, 422),
 )
 async def set_roles(
@@ -204,7 +197,6 @@ async def set_roles(
     "/users/{user_id}/scopes",
     operation_id="admin_user_scopes_update",
     summary="Adminning hududlarini (scope) belgilash",
-    dependencies=[STEP_UP],
     responses=_errors(401, 403, 404, 422),
 )
 async def set_scopes(
@@ -222,7 +214,6 @@ async def set_scopes(
     "/users/{user_id}/reset-password",
     operation_id="admin_user_password_reset",
     summary="Vaqtinchalik parol berish (barcha sessiyalari tugaydi)",
-    dependencies=[STEP_UP],
     responses=_errors(401, 403, 404, 409),
 )
 async def reset_password(
@@ -232,25 +223,10 @@ async def reset_password(
 
 
 @router.post(
-    "/users/{user_id}/reset-totp",
-    status_code=204,
-    operation_id="admin_user_totp_reset",
-    summary="TOTP'ni o'chirish: admin keyingi kirishda qaytadan ulaydi",
-    dependencies=[STEP_UP],
-    responses=_errors(401, 403, 404),
-)
-async def reset_totp(
-    user_id: uuid.UUID, actor: UsersSecurity, service: AdminServiceDep, meta: RequestMetaDep
-) -> None:
-    await service.reset_totp(actor, meta, user_id)
-
-
-@router.post(
     "/users/{user_id}/unlock",
     status_code=204,
     operation_id="admin_user_login_unlock",
     summary="Login blokini muddatidan oldin ochish",
-    dependencies=[STEP_UP],
     responses=_errors(401, 403, 404),
 )
 async def unlock(
@@ -277,7 +253,6 @@ async def list_roles(_: RolesRead, service: AdminServiceDep) -> list[RoleOut]:
     status_code=201,
     operation_id="admin_roles_create",
     summary="Rol yaratish",
-    dependencies=[STEP_UP],
     responses=_errors(401, 403, 409, 422),
 )
 async def create_role(
@@ -303,7 +278,6 @@ async def get_role(role_id: uuid.UUID, _: RolesRead, service: AdminServiceDep) -
     "/roles/{role_id}",
     operation_id="admin_roles_update",
     summary="Rolni tahrirlash (keyingi so'rovdan kuchga kiradi)",
-    dependencies=[STEP_UP],
     responses=_errors(401, 403, 404, 409, 422),
 )
 async def update_role(
@@ -329,7 +303,6 @@ async def update_role(
     status_code=204,
     operation_id="admin_roles_delete",
     summary="Rolni o'chirish (adminlarga biriktirilmagan bo'lsa)",
-    dependencies=[STEP_UP],
     responses=_errors(401, 403, 404, 409),
 )
 async def delete_role(

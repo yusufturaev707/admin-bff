@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from app.audit.sink import AuditOutcome
 from app.settings import Settings
-from tests.auth_helpers import AUTH, Admin, create_admin, login, random_password, totp_code
+from tests.auth_helpers import AUTH, Admin, create_admin, login, random_password
 from tests.conftest import AuditRecorder, FakeClock
 from tests.helpers import extra_client
 from tests.rbac_helpers import grant, make_admin_with, make_role, make_superadmin
@@ -103,7 +103,7 @@ async def test_role_created_by_superadmin_is_applied(
             f"{AUTH}/login",
             json={"username": "new_auditor", "password": body["initial_password"]},
         )
-        assert first.json()["pending"] == ["totp_enrollment", "password_change"]
+        assert first.json()["pending"] == ["password_change"]
 
     # An existing admin given the role can read admins, nothing more.
     operator = await create_admin(settings, clock)
@@ -245,22 +245,6 @@ async def test_role_rules(browsers: Any, settings: Settings, clock: FakeClock) -
     assert (await boss.get(f"{ADMIN}/roles/{unused}")).status_code == 404
 
 
-async def test_admin_changes_need_a_recent_totp(
-    browsers: Any, settings: Settings, clock: FakeClock
-) -> None:
-    superadmin = await make_superadmin(settings, clock)
-    boss = await browsers(superadmin)
-    clock.advance(301)
-    stale = await boss.send("POST", f"{ADMIN}/roles", {"name": "late", "permissions": []})
-    assert stale.status_code == 401
-    assert stale.json()["error"]["code"] == "step_up_required"
-    step_up = await boss.send("POST", f"{AUTH}/step-up", {"code": totp_code(superadmin, clock)})
-    assert step_up.status_code == 200
-    assert (
-        await boss.send("POST", f"{ADMIN}/roles", {"name": "late", "permissions": []})
-    ).status_code == 201
-
-
 async def test_user_listing(browsers: Any, settings: Settings, clock: FakeClock) -> None:
     superadmin = await make_superadmin(settings, clock)  # username "admin_<hex>"
     boss = await browsers(superadmin)
@@ -302,7 +286,7 @@ async def test_blocking_ends_sessions_and_sign_in(
     assert again.status_code == 401
 
 
-async def test_password_and_totp_reset(browsers: Any, settings: Settings, clock: FakeClock) -> None:
+async def test_password_reset(browsers: Any, settings: Settings, clock: FakeClock) -> None:
     boss = await browsers(await make_superadmin(settings, clock))
     operator = await make_admin_with(settings, clock, ["admin:users:read"])
     me = await browsers(operator)
@@ -311,22 +295,10 @@ async def test_password_and_totp_reset(browsers: Any, settings: Settings, clock:
     assert reset.status_code == 200
     temporary = reset.json()["initial_password"]
     assert (await me.get(f"{AUTH}/session")).status_code == 401
-    start = await me.client.post(
-        f"{AUTH}/login", json={"username": operator.username, "password": temporary}
-    )
-    assert start.json()["mfa_required"] is True  # TOTP still enrolled
-    clock.advance(30)
     done = await me.client.post(
-        f"{AUTH}/mfa",
-        json={"mfa_token": start.json()["mfa_token"], "code": totp_code(operator, clock)},
+        f"{AUTH}/login", json={"username": operator.username, "password": temporary}
     )
     assert done.json()["pending"] == ["password_change"]
-
-    assert (await boss.send("POST", f"{ADMIN}/users/{operator.id}/reset-totp")).status_code == 204
-    again = await me.client.post(
-        f"{AUTH}/login", json={"username": operator.username, "password": temporary}
-    )
-    assert again.json()["pending"] == ["totp_enrollment", "password_change"]
 
 
 async def test_unlock_from_the_admin_api(
@@ -389,8 +361,7 @@ async def test_me(browsers: Any, settings: Settings, clock: FakeClock) -> None:
         ("zone", "*"),
         ("branch", "*"),
     }
-    assert body["totp_enabled"] is True
-    assert body["mfa_at"].endswith("Z")
+    assert "totp_enabled" not in body
     assert uuid.UUID(body["id"])
 
 

@@ -6,7 +6,6 @@
 * `require(perm)` / `require_any(*perms)`: 403 `forbidden` without the permission;
   every denial is audited.
 * `get_principal`: any fully set-up session (e.g. `/me`).
-* `require_recent_mfa(max_age_s)` (step-up) lives in app.auth.dependencies.
 
 The permissions named here are checked against the registry at startup
 (app.rbac.route_check), so a typo stops the service instead of locking a route.
@@ -24,14 +23,13 @@ from app.auth.dependencies import (
     get_auth_service,
     request_meta,
     require_authenticated,
-    require_recent_mfa,
 )
 from app.core.errors import AppError, ErrorCode
 from app.core.guards import mark_guard
 from app.rbac.permissions import PERMISSION_RE
 from app.rbac.principal import Principal, PrincipalLoader
 
-__all__ = ["PrincipalDep", "get_principal", "require", "require_any", "require_recent_mfa"]
+__all__ = ["PrincipalDep", "get_principal", "require", "require_any"]
 
 
 async def get_principal(request: Request, session: AuthenticatedSession) -> Principal:

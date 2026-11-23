@@ -30,7 +30,6 @@ class ErrorCode(StrEnum):
     NOT_AUTHENTICATED = "not_authenticated"
     SESSION_EXPIRED = "session_expired"
     FORBIDDEN = "forbidden"
-    STEP_UP_REQUIRED = "step_up_required"
     CSRF_FAILED = "csrf_failed"
     NOT_FOUND = "not_found"
     METHOD_NOT_ALLOWED = "method_not_allowed"
@@ -47,7 +46,6 @@ _DEFAULTS: dict[ErrorCode, tuple[int, str]] = {
     ErrorCode.NOT_AUTHENTICATED: (401, "Tizimga kirish talab qilinadi"),
     ErrorCode.SESSION_EXPIRED: (401, "Sessiya muddati tugagan, qaytadan kiring"),
     ErrorCode.FORBIDDEN: (403, "Bu amal uchun ruxsat yo'q"),
-    ErrorCode.STEP_UP_REQUIRED: (401, "Bu amal uchun TOTP kodni qayta kiriting"),
     ErrorCode.CSRF_FAILED: (403, "So'rov xavfsizlik tekshiruvidan o'tmadi"),
     ErrorCode.NOT_FOUND: (404, "Ma'lumot topilmadi"),
     ErrorCode.METHOD_NOT_ALLOWED: (405, "Bu metod qo'llab-quvvatlanmaydi"),

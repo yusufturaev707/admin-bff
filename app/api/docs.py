@@ -1,11 +1,11 @@
 """API docs for the frontend developer: Swagger UI and the OpenAPI schema (section 10).
 
-* `GET /api/v1/docs`: Swagger UI with a sign-in bar (login, password, TOTP,
-  step-up, sign-out). Its assets are served from this app
+* `GET /api/v1/docs`: Swagger UI with a sign-in bar (login, password,
+  sign-out). Its assets are served from this app
   (`/api/v1/docs/static/`), because the internal network blocks CDNs.
 * `GET /api/v1/openapi.json`: the schema. Every operation states its access:
   `security` (session cookie, plus the CSRF header for unsafe methods),
-  `x-permissions` and `x-step-up`.
+  and `x-permissions`.
 
 "Try it out" works like the frontend: the session cookie is set by the sign-in
 response, and the page adds the CSRF token (kept in memory only) to every
@@ -29,7 +29,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.auth.csrf import UNSAFE_METHODS
 from app.auth.dependencies import CSRF_HEADER, SESSION_COOKIE
-from app.core.guards import guard_permissions, is_step_up
+from app.core.guards import guard_permissions
 from app.rbac.dependencies import require_in_production
 from app.rbac.route_check import PUBLIC_PATHS
 
@@ -58,9 +58,7 @@ _PAGE = f"""<!doctype html>
     <input id="bff-username" name="username" autocomplete="username" placeholder="login">
     <input id="bff-password" name="password" type="password" autocomplete="current-password"
            placeholder="parol">
-    <input id="bff-code" name="code" inputmode="numeric" maxlength="6" placeholder="TOTP kod">
     <button type="submit" id="bff-login">Kirish</button>
-    <button type="button" id="bff-stepup" title="TOTP kodni qayta kiritish">Step-up</button>
   </span>
   <button type="button" id="bff-logout" hidden>Chiqish</button>
   <span id="bff-note"></span>
@@ -75,7 +73,6 @@ _PAGE = f"""<!doctype html>
 _CSS = """#bff-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
   padding: 10px 20px; background: #1b1b1b; color: #fff; font: 14px sans-serif; }
 #bff-bar input { padding: 4px 6px; width: 150px; }
-#bff-bar #bff-code { width: 90px; }
 #bff-bar button { padding: 4px 10px; cursor: pointer; }
 #bff-status.ok { color: #7ee787; }
 #bff-status.err { color: #ff9b9b; }
@@ -85,7 +82,6 @@ _CSS = """#bff-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: cent
 _INIT = """(() => {
   "use strict";
   const SIGN_IN = __SIGN_IN__;
-  const TOTP = __TOTP__;
   const API = "/api/v1";
   const UNSAFE = ["POST", "PUT", "PATCH", "DELETE"];
   const $ = (id) => document.getElementById(id);
@@ -132,25 +128,11 @@ _INIT = """(() => {
 
   async function signIn(event) {
     event.preventDefault();
-    const code = $("bff-code").value.trim();
-    let res = await call("POST", "/auth/login",
+    const res = await call("POST", "/auth/login",
       {username: $("bff-username").value, password: $("bff-password").value});
-    if (res.status !== 200) return show(problem(res), false);
-    if (res.data.mfa_required) {
-      if (!code) return show("TOTP kodni kiriting va qayta bosing", false);
-      res = await call("POST", "/auth/mfa", {mfa_token: res.data.mfa_token, code});
-      if (res.status !== 200) return show(problem(res), false);
-    }
     $("bff-password").value = "";
-    $("bff-code").value = "";
-    await refresh();
-  }
-
-  async function stepUp() {
-    const res = await call("POST", "/auth/step-up", {code: $("bff-code").value.trim()});
-    $("bff-code").value = "";
     if (res.status !== 200) return show(problem(res), false);
-    show("Step-up bajarildi: 5 daqiqa amal qiladi", true);
+    await refresh();
   }
 
   async function signOut() {
@@ -158,13 +140,8 @@ _INIT = """(() => {
     await refresh();
   }
 
-  if (!TOTP) {
-    $("bff-code").hidden = true;
-    $("bff-stepup").hidden = true;
-  }
   if (SIGN_IN) {
     $("bff-bar").addEventListener("submit", signIn);
-    $("bff-stepup").addEventListener("click", stepUp);
     $("bff-logout").addEventListener("click", signOut);
     $("bff-note").textContent = "CSRF token o'zi qo'shiladi";
   } else {
@@ -221,7 +198,6 @@ async def docs() -> HTMLResponse:
 async def docs_init(request: Request) -> Response:
     settings = request.app.state.settings
     script = _INIT.replace("__SIGN_IN__", "false" if settings.is_production else "true")
-    script = script.replace("__TOTP__", "true" if settings.totp_required else "false")
     return Response(script, media_type="text/javascript", headers=_NO_STORE)
 
 
@@ -247,7 +223,7 @@ SECURITY_SCHEMES: dict[str, Any] = {
         "type": "apiKey",
         "in": "cookie",
         "name": SESSION_COOKIE,
-        "description": "HttpOnly sessiya cookie'si: `POST /api/v1/auth/mfa` o'rnatadi.",
+        "description": "HttpOnly sessiya cookie'si: `POST /api/v1/auth/login` o'rnatadi.",
     },
     "csrf": {
         "type": "apiKey",
@@ -276,7 +252,6 @@ def _describe_access(app: FastAPI, schema: dict[str, Any]) -> None:
             continue
         calls = list(_calls(context.dependant))
         permissions = sorted({p for c in calls for p in guard_permissions(c) or ()})
-        step_up = any(is_step_up(c) for c in calls)
         for method in context.methods or ():
             operation = operations.get(method.lower())
             if operation is None:
@@ -291,9 +266,6 @@ def _describe_access(app: FastAPI, schema: dict[str, Any]) -> None:
             if permissions:
                 operation["x-permissions"] = permissions
                 notes.append("**Permission:** " + ", ".join(f"`{p}`" for p in permissions))
-            if step_up:
-                operation["x-step-up"] = True
-                notes.append("**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak.")
             if notes:
                 text = operation.get("description", "")
                 operation["description"] = "\n\n".join([*([text] if text else []), *notes])

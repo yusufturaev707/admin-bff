@@ -9,10 +9,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from sqlalchemy import (
-    BigInteger,
     CheckConstraint,
-    ForeignKey,
-    LargeBinary,
     String,
     Text,
     func,
@@ -62,12 +59,6 @@ class AdminUser(Base):
         ARRAY(Text), server_default=text("ARRAY['password']::text[]")
     )
 
-    # AES-GCM encrypted (app.auth.crypto.SecretBox), never stored in plain text.
-    totp_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
-    totp_confirmed_at: Mapped[datetime | None]
-    # Last accepted TOTP time step: a code with a step <= this one is a replay.
-    totp_last_timecode: Mapped[int | None] = mapped_column(BigInteger)
-
     # OneID link: HMAC-SHA256 of the PINFL (lookup) and its masked form (display).
     # The PINFL itself is not stored.
     oneid_pinfl_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
@@ -81,23 +72,5 @@ class AdminUser(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
     last_login_at: Mapped[datetime | None]
 
-    @property
-    def totp_enabled(self) -> bool:
-        return self.totp_confirmed_at is not None and self.totp_secret_enc is not None
-
     def allows(self, method: AuthMethod) -> bool:
         return method.value in self.auth_methods
-
-
-class RecoveryCode(Base):
-    """One-time recovery codes (Argon2id hashes), 10 per admin."""
-
-    __tablename__ = "recovery_codes"
-
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("admin_users.id", ondelete="CASCADE"), index=True
-    )
-    code_hash: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    used_at: Mapped[datetime | None]

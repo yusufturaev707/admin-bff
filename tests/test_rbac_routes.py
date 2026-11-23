@@ -56,7 +56,6 @@ def test_route_permissions_must_be_exact() -> None:
 def test_public_list_is_the_spec() -> None:
     assert {
         "/api/v1/auth/login",
-        "/api/v1/auth/mfa",
         "/api/v1/auth/oneid/start",
         "/api/v1/auth/oneid/callback",
         "/health",

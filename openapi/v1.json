@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "UZBMB Admin",
-    "description": "Yagona adminka backend'i. Frontend faqat shu API bilan ishlaydi.\n\n* **Kirish:** `POST /api/v1/auth/login`, keyin `POST /api/v1/auth/mfa` (TOTP kod).\n  Sessiya `__Host-admin_session` HttpOnly cookie'sida turadi, frontend uni o'qimaydi.\n* **CSRF:** har bir POST, PUT, PATCH va DELETE so'rovida `X-CSRF-Token` sarlavhasi.\n  Token login javobida keladi, sahifa yangilansa `GET /api/v1/auth/session` beradi.\n* **Ruxsat:** har bir endpoint'da `x-permissions` (kerakli permission) ko'rsatilgan.\n  Ruxsat bo'lmasa `403 forbidden`.\n* **Step-up:** `x-step-up: true` endpoint'lar uchun TOTP so'nggi 5 daqiqada kiritilgan\n  bo'lishi kerak, aks holda `401 step_up_required`: `POST /api/v1/auth/step-up`, keyin\n  so'rovni qaytaring.\n* **Xato formati:** `{\"error\": {\"code\", \"message\", \"request_id\", \"details\"}}`. Mantiq\n  `code`ga qarab quriladi.\n* **Vaqt:** ISO 8601, UTC (`...Z`). ID'lar string.\n\nBatafsil: repo'dagi `docs/frontend.md`.\n",
+    "description": "Yagona adminka backend'i. Frontend faqat shu API bilan ishlaydi.\n\n* **Kirish:** `POST /api/v1/auth/login` (login va parol). Sessiya `__Host-admin_session`\n  HttpOnly cookie'sida turadi, frontend uni o'qimaydi.\n* **CSRF:** har bir POST, PUT, PATCH va DELETE so'rovida `X-CSRF-Token` sarlavhasi.\n  Token login javobida keladi, sahifa yangilansa `GET /api/v1/auth/session` beradi.\n* **Ruxsat:** har bir endpoint'da `x-permissions` (kerakli permission) ko'rsatilgan.\n  Ruxsat bo'lmasa `403 forbidden`.\n* **Xato formati:** `{\"error\": {\"code\", \"message\", \"request_id\", \"details\"}}`. Mantiq\n  `code`ga qarab quriladi.\n* **Vaqt:** ISO 8601, UTC (`...Z`). ID'lar string.\n\nBatafsil: repo'dagi `docs/frontend.md`.\n",
     "version": "0.1.0"
   },
   "paths": {
@@ -65,85 +65,13 @@
         "tags": [
           "auth"
         ],
-        "summary": "Login va parol",
+        "summary": "Login va parol bilan kirish: sessiya cookie'si o'rnatiladi",
         "operationId": "auth_login_submit",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/LoginRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LoginResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Unprocessable Content",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too Many Requests",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": []
-      }
-    },
-    "/api/v1/auth/mfa": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "TOTP yoki recovery code bilan kirishni yakunlash",
-        "operationId": "auth_mfa_submit",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MfaRequest"
               }
             }
           },
@@ -440,217 +368,6 @@
           },
           "409": {
             "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Unprocessable Content",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too Many Requests",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session": [],
-            "csrf": []
-          }
-        ]
-      }
-    },
-    "/api/v1/auth/totp/enroll": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "TOTP ulashni boshlash",
-        "operationId": "auth_totp_enroll",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TotpEnrollResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session": [],
-            "csrf": []
-          }
-        ]
-      }
-    },
-    "/api/v1/auth/totp/confirm": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "TOTP'ni kod bilan tasdiqlash",
-        "operationId": "auth_totp_confirm",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CodeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TotpConfirmResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Unprocessable Content",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session": [],
-            "csrf": []
-          }
-        ]
-      }
-    },
-    "/api/v1/auth/step-up": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Xavfli amaldan oldin TOTP'ni qayta kiritish",
-        "operationId": "auth_step_up_submit",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CodeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StepUpResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1060,8 +777,7 @@
         "x-permissions": [
           "admin:users:write"
         ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:users:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
+        "description": "**Permission:** `admin:users:write`"
       }
     },
     "/api/v1/admin/users/{user_id}": {
@@ -1244,8 +960,7 @@
         "x-permissions": [
           "admin:users:write"
         ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:users:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
+        "description": "**Permission:** `admin:users:write`"
       }
     },
     "/api/v1/admin/users/{user_id}/roles": {
@@ -1348,8 +1063,7 @@
         "x-permissions": [
           "admin:users:write"
         ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:users:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
+        "description": "**Permission:** `admin:users:write`"
       }
     },
     "/api/v1/admin/users/{user_id}/scopes": {
@@ -1442,8 +1156,7 @@
         "x-permissions": [
           "admin:users:write"
         ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:users:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
+        "description": "**Permission:** `admin:users:write`"
       }
     },
     "/api/v1/admin/users/{user_id}/reset-password": {
@@ -1536,85 +1249,7 @@
         "x-permissions": [
           "admin:users:security"
         ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:users:security`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
-      }
-    },
-    "/api/v1/admin/users/{user_id}/reset-totp": {
-      "post": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "TOTP'ni o'chirish: admin keyingi kirishda qaytadan ulaydi",
-        "operationId": "admin_user_totp_reset",
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "User Id"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session": [],
-            "csrf": []
-          }
-        ],
-        "x-permissions": [
-          "admin:users:security"
-        ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:users:security`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
+        "description": "**Permission:** `admin:users:security`"
       }
     },
     "/api/v1/admin/users/{user_id}/unlock": {
@@ -1690,8 +1325,7 @@
         "x-permissions": [
           "admin:users:security"
         ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:users:security`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
+        "description": "**Permission:** `admin:users:security`"
       }
     },
     "/api/v1/admin/roles": {
@@ -1824,8 +1458,7 @@
         "x-permissions": [
           "admin:roles:write"
         ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:roles:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
+        "description": "**Permission:** `admin:roles:write`"
       }
     },
     "/api/v1/admin/roles/{role_id}": {
@@ -2008,8 +1641,7 @@
         "x-permissions": [
           "admin:roles:write"
         ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:roles:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
+        "description": "**Permission:** `admin:roles:write`"
       },
       "delete": {
         "tags": [
@@ -2093,8 +1725,7 @@
         "x-permissions": [
           "admin:roles:write"
         ],
-        "x-step-up": true,
-        "description": "**Permission:** `admin:roles:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
+        "description": "**Permission:** `admin:roles:write`"
       }
     },
     "/api/v1/admin/permissions": {
@@ -2420,7 +2051,7 @@
           "audit"
         ],
         "summary": "Audit log'ni CSV faylga eksport qilish",
-        "description": "TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak (step-up). Bir soatda ko'pi bilan 5 ta eksport, bitta faylda ko'pi bilan 100 000 yozuv. Fayl UTF-8 (BOM bilan), eskisi birinchi.\n\n**Permission:** `audit:logs:export`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak.",
+        "description": "Bir soatda ko'pi bilan 5 ta eksport, bitta faylda ko'pi bilan 100 000 yozuv. Fayl UTF-8 (BOM bilan), eskisi birinchi.\n\n**Permission:** `audit:logs:export`",
         "operationId": "audit_logs_export",
         "requestBody": {
           "content": {
@@ -2493,8 +2124,7 @@
         ],
         "x-permissions": [
           "audit:logs:export"
-        ],
-        "x-step-up": true
+        ]
       }
     }
   },
@@ -2858,22 +2488,6 @@
         ],
         "title": "AuthMethod"
       },
-      "CodeRequest": {
-        "properties": {
-          "code": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "title": "Code",
-            "description": "Autentifikator ilovasidagi 6 xonali kod"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "code"
-        ],
-        "title": "CodeRequest"
-      },
       "CursorPage_AuditEntry_": {
         "properties": {
           "items": {
@@ -2948,7 +2562,6 @@
           "not_authenticated",
           "session_expired",
           "forbidden",
-          "step_up_required",
           "csrf_failed",
           "not_found",
           "method_not_allowed",
@@ -3030,71 +2643,6 @@
           "username": "operator_toshkent"
         }
       },
-      "LoginResponse": {
-        "properties": {
-          "mfa_required": {
-            "type": "boolean",
-            "title": "Mfa Required"
-          },
-          "mfa_token": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mfa Token",
-            "description": "Bir martalik, 5 daqiqa amal qiladi"
-          },
-          "setup_required": {
-            "type": "boolean",
-            "title": "Setup Required",
-            "default": false
-          },
-          "pending": {
-            "items": {
-              "$ref": "#/components/schemas/PendingStep"
-            },
-            "type": "array",
-            "title": "Pending"
-          },
-          "csrf_token": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Csrf Token"
-          }
-        },
-        "type": "object",
-        "required": [
-          "mfa_required"
-        ],
-        "title": "LoginResponse",
-        "description": "Either `mfa_required` (continue with /auth/mfa) or, on the very first\nsign-in, a setup session (`setup_required`, cookie set, `csrf_token`).",
-        "examples": [
-          {
-            "mfa_required": true,
-            "mfa_token": "...",
-            "setup_required": false
-          },
-          {
-            "csrf_token": "...",
-            "mfa_required": false,
-            "pending": [
-              "totp_enrollment",
-              "password_change"
-            ],
-            "setup_required": true
-          }
-        ]
-      },
       "MeOut": {
         "properties": {
           "id": {
@@ -3124,10 +2672,6 @@
             "type": "array",
             "title": "Auth Methods"
           },
-          "totp_enabled": {
-            "type": "boolean",
-            "title": "Totp Enabled"
-          },
           "must_change_password": {
             "type": "boolean",
             "title": "Must Change Password"
@@ -3153,18 +2697,6 @@
             },
             "type": "array",
             "title": "Scopes"
-          },
-          "mfa_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mfa At"
           }
         },
         "type": "object",
@@ -3173,60 +2705,13 @@
           "username",
           "full_name",
           "auth_methods",
-          "totp_enabled",
           "must_change_password",
           "roles",
           "permissions",
-          "scopes",
-          "mfa_at"
+          "scopes"
         ],
         "title": "MeOut",
         "description": "The current admin: the frontend builds its menu from `permissions`."
-      },
-      "MfaRequest": {
-        "properties": {
-          "mfa_token": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Mfa Token"
-          },
-          "code": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^[0-9]{6}$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code"
-          },
-          "recovery_code": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 24,
-                "minLength": 16
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recovery Code"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "mfa_token"
-        ],
-        "title": "MfaRequest",
-        "example": {
-          "code": "123456",
-          "mfa_token": "..."
-        }
       },
       "Page_UserOut_": {
         "properties": {
@@ -3272,19 +2757,6 @@
             "maxLength": 256,
             "minLength": 1,
             "title": "New Password"
-          },
-          "code": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^[0-9]{6}$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code",
-            "description": "TOTP kod. TOTP o'chirilgan bo'lsa (TOTP_REQUIRED=false) yuborilmaydi"
           }
         },
         "additionalProperties": false,
@@ -3312,7 +2784,6 @@
       "PendingStep": {
         "type": "string",
         "enum": [
-          "totp_enrollment",
           "password_change"
         ],
         "title": "PendingStep",
@@ -3674,18 +3145,6 @@
             "format": "date-time",
             "title": "Expires At"
           },
-          "mfa_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mfa At"
-          },
           "setup_required": {
             "type": "boolean",
             "title": "Setup Required"
@@ -3711,7 +3170,6 @@
           "created_at",
           "last_seen",
           "expires_at",
-          "mfa_at",
           "setup_required",
           "pending",
           "csrf_token"
@@ -3805,85 +3263,21 @@
           "pending"
         ],
         "title": "SessionStartedResponse",
-        "example": {
-          "csrf_token": "...",
-          "pending": [],
-          "setup_required": false
-        }
-      },
-      "StepUpResponse": {
-        "properties": {
-          "mfa_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Mfa At"
+        "description": "The session cookie is set. On the first sign-in `pending` lists what is\nleft (`password_change`); until then only /auth/* works.",
+        "examples": [
+          {
+            "csrf_token": "...",
+            "pending": [],
+            "setup_required": false
+          },
+          {
+            "csrf_token": "...",
+            "pending": [
+              "password_change"
+            ],
+            "setup_required": true
           }
-        },
-        "type": "object",
-        "required": [
-          "mfa_at"
-        ],
-        "title": "StepUpResponse"
-      },
-      "TotpConfirmResponse": {
-        "properties": {
-          "csrf_token": {
-            "type": "string",
-            "title": "Csrf Token",
-            "description": "Har bir POST/PUT/PATCH/DELETE'da X-CSRF-Token sarlavhasi"
-          },
-          "setup_required": {
-            "type": "boolean",
-            "title": "Setup Required"
-          },
-          "pending": {
-            "items": {
-              "$ref": "#/components/schemas/PendingStep"
-            },
-            "type": "array",
-            "title": "Pending"
-          },
-          "recovery_codes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Recovery Codes",
-            "description": "10 ta bir martalik kod, faqat bir marta ko'rsatiladi"
-          }
-        },
-        "type": "object",
-        "required": [
-          "csrf_token",
-          "setup_required",
-          "pending",
-          "recovery_codes"
-        ],
-        "title": "TotpConfirmResponse",
-        "example": {
-          "csrf_token": "...",
-          "pending": [],
-          "setup_required": false
-        }
-      },
-      "TotpEnrollResponse": {
-        "properties": {
-          "secret": {
-            "type": "string",
-            "title": "Secret"
-          },
-          "otpauth_uri": {
-            "type": "string",
-            "title": "Otpauth Uri"
-          }
-        },
-        "type": "object",
-        "required": [
-          "secret",
-          "otpauth_uri"
-        ],
-        "title": "TotpEnrollResponse",
-        "description": "Shown once. The frontend draws `otpauth_uri` as a QR code locally."
+        ]
       },
       "UserCreate": {
         "properties": {
@@ -4000,10 +3394,6 @@
             "type": "array",
             "title": "Auth Methods"
           },
-          "totp_enabled": {
-            "type": "boolean",
-            "title": "Totp Enabled"
-          },
           "must_change_password": {
             "type": "boolean",
             "title": "Must Change Password"
@@ -4070,7 +3460,6 @@
           "full_name",
           "is_active",
           "auth_methods",
-          "totp_enabled",
           "must_change_password",
           "pinfl_masked",
           "roles",
@@ -4113,10 +3502,6 @@
             },
             "type": "array",
             "title": "Auth Methods"
-          },
-          "totp_enabled": {
-            "type": "boolean",
-            "title": "Totp Enabled"
           },
           "must_change_password": {
             "type": "boolean",
@@ -4172,7 +3557,6 @@
           "full_name",
           "is_active",
           "auth_methods",
-          "totp_enabled",
           "must_change_password",
           "pinfl_masked",
           "roles",
@@ -4273,10 +3657,6 @@
             "type": "array",
             "title": "Auth Methods"
           },
-          "totp_enabled": {
-            "type": "boolean",
-            "title": "Totp Enabled"
-          },
           "must_change_password": {
             "type": "boolean",
             "title": "Must Change Password"
@@ -4343,7 +3723,6 @@
           "full_name",
           "is_active",
           "auth_methods",
-          "totp_enabled",
           "must_change_password",
           "pinfl_masked",
           "roles",
@@ -4399,7 +3778,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "__Host-admin_session",
-        "description": "HttpOnly sessiya cookie'si: `POST /api/v1/auth/mfa` o'rnatadi."
+        "description": "HttpOnly sessiya cookie'si: `POST /api/v1/auth/login` o'rnatadi."
       },
       "csrf": {
         "type": "apiKey",
@@ -4424,7 +3803,7 @@
     },
     {
       "name": "auth",
-      "description": "Kirish: login + parol yoki OneID, keyin TOTP; sessiya, CSRF, step-up"
+      "description": "Kirish: login + parol yoki OneID; sessiya va CSRF"
     },
     {
       "name": "audit",

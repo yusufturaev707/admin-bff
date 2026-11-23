@@ -2,7 +2,7 @@
 
 Every unsafe request (POST, PUT, PATCH, DELETE) must carry an `Origin` header
 equal to FRONTEND_ORIGIN, otherwise it is rejected before routing. This also
-covers /auth/login and /auth/mfa, which have no session yet (login CSRF). A
+covers /auth/login, which has no session yet (login CSRF). A
 missing `Origin` is rejected too: browsers always send it on cross-origin
 requests, and the frontend is on another origin than the API.
 

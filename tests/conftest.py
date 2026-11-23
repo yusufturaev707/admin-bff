@@ -107,7 +107,7 @@ class Services:
         """Empties the test database and this session's Redis keys."""
         conn = await self.pg_connect()
         try:
-            await conn.execute("TRUNCATE admin_users, recovery_codes, roles, permissions CASCADE")
+            await conn.execute("TRUNCATE admin_users, roles, permissions CASCADE")
             await reset_audit(conn)
         finally:
             await conn.close()
@@ -192,7 +192,6 @@ def settings(clean_env: pytest.MonkeyPatch, services: Services) -> Settings:
         redis_url=services.redis_url,
         redis_password=services.redis_password,
         redis_key_prefix=services.redis_prefix,
-        totp_enc_key=random_key(),
         pinfl_hmac_key=random_key(),
         # Fast Argon2 for tests only (production enforces the OWASP minimum).
         argon2_time_cost=1,
@@ -268,8 +267,6 @@ def cli_env(
         clean_env.setenv("DB_PASSWORD", services.db_password.get_secret_value())
     clean_env.setenv("REDIS_URL", services.redis_url)
     clean_env.setenv("REDIS_KEY_PREFIX", services.redis_prefix)
-    assert settings.totp_enc_key is not None
-    clean_env.setenv("TOTP_ENC_KEY", settings.totp_enc_key.get_secret_value())
     for name in ("ARGON2_TIME_COST", "ARGON2_MEMORY_COST_KIB", "ARGON2_PARALLELISM"):
         clean_env.setenv(name, str(getattr(settings, name.lower())))
     yield settings

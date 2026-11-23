@@ -17,7 +17,7 @@ from app.core.time import isoformat_z
 from app.main import create_app
 from app.settings import Settings
 from tests.audit_helpers import records, write_events
-from tests.auth_helpers import AUTH, Admin, create_admin, login, start_login, totp_code, wrong_code
+from tests.auth_helpers import AUTH, Admin, create_admin, login, start_login
 from tests.conftest import FakeClock, Services
 from tests.helpers import app_client, extra_client
 from tests.rbac_helpers import make_admin_with, make_superadmin
@@ -43,7 +43,7 @@ async def _signed_in_superadmin(
 async def test_every_write_request_is_audited(
     client: httpx.AsyncClient, settings: Settings, clock: FakeClock
 ) -> None:
-    superadmin, h = await _signed_in_superadmin(client, settings, clock)
+    _, h = await _signed_in_superadmin(client, settings, clock)
     writes: list[httpx.Response] = []
 
     async def call(method: str, url: str, **kwargs: object) -> httpx.Response:
@@ -71,18 +71,16 @@ async def test_every_write_request_is_audited(
     await call("PUT", f"{ADMIN}/users/{user_id}/roles", json={"role_ids": []})
     await call("PUT", f"{ADMIN}/users/{user_id}/scopes", json={"scopes": []})
     await call("POST", f"{ADMIN}/users/{user_id}/reset-password")
-    await call("POST", f"{ADMIN}/users/{user_id}/reset-totp")
     await call("POST", f"{ADMIN}/users/{user_id}/unlock")
     await call("DELETE", f"{ADMIN}/roles/{role_id}")
     # Requests that fail are audited too.
     invalid = await call("POST", f"{ADMIN}/roles", json={"name": ""})
     missing = await call("DELETE", f"{ADMIN}/roles/{uuid.uuid4()}")
-    clock.advance(30)
-    await call("POST", f"{AUTH}/step-up", json={"code": wrong_code(totp_code(superadmin, clock))})
+    await call("POST", f"{AUTH}/password", json={"old_password": "x" * 16, "new_password": "y"})
     await call("POST", f"{AUTH}/logout")
 
     assert [r.status_code for r in writes] == [
-        201, 200, 201, 200, 200, 200, 200, 204, 204, 204, 422, 404, 422, 204
+        201, 200, 201, 200, 200, 200, 200, 204, 204, 422, 404, 422, 204
     ]  # fmt: skip
     for response in writes:
         found = await records(settings, request_id=_request_id(response))
@@ -170,7 +168,7 @@ async def test_rejected_requests_are_audited(
 async def test_unfinished_setup_403_is_audited(
     client: httpx.AsyncClient, settings: Settings, clock: FakeClock
 ) -> None:
-    newcomer = await create_admin(settings, clock, totp=False)
+    newcomer = await create_admin(settings, clock, must_change_password=True)
     assert (await start_login(client, newcomer)).status_code == 200
     response = await client.get("/api/v1/me")
     assert response.status_code == 403
@@ -193,12 +191,8 @@ async def test_logins_are_audited_without_a_duplicate_request_record(
     assert wrong.status_code == 401
     [record] = await records(settings, request_id=_request_id(wrong))
     assert (record.action, record.outcome, record.actor_id) == ("auth.login", "denied", admin.id)
-    start = await start_login(client, admin)
-    mfa = await client.post(
-        f"{AUTH}/mfa",
-        json={"mfa_token": start.json()["mfa_token"], "code": totp_code(admin, clock)},
-    )
-    [record] = await records(settings, request_id=_request_id(mfa))
+    signed_in = await start_login(client, admin)
+    [record] = await records(settings, request_id=_request_id(signed_in))
     assert (record.action, record.session_hash is not None) == ("auth.login", True)
 
 

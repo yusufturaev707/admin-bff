@@ -5,15 +5,7 @@ from fastapi import FastAPI
 
 from app.auth.dependencies import SESSION_COOKIE
 from app.settings import Settings
-from tests.auth_helpers import (
-    AUTH,
-    create_admin,
-    login,
-    random_password,
-    start_login,
-    totp_code,
-    wrong_code,
-)
+from tests.auth_helpers import AUTH, create_admin, login, random_password, start_login
 from tests.conftest import FakeClock
 from tests.helpers import extra_client
 
@@ -100,11 +92,7 @@ async def test_password_change_ends_every_session(
         response = await client.post(
             f"{AUTH}/password",
             headers=csrf(token),
-            json={
-                "old_password": admin.password,
-                "new_password": new_password,
-                "code": totp_code(admin, clock),
-            },
+            json={"old_password": admin.password, "new_password": new_password},
         )
         assert response.status_code == 204
         assert (await client.get(f"{AUTH}/session")).status_code == 401
@@ -123,38 +111,32 @@ async def test_password_change_checks(
     admin = await create_admin(settings, clock, username="operator")
     token = await login(client, admin, clock)
 
-    async def change(old: str, new: str, code: str) -> httpx.Response:
+    async def change(old: str, new: str) -> httpx.Response:
         return await client.post(
             f"{AUTH}/password",
             headers=csrf(token),
-            json={"old_password": old, "new_password": new, "code": code},
+            json={"old_password": old, "new_password": new},
         )
 
     def error(response: httpx.Response) -> tuple[list[str], str]:
         field = response.json()["error"]["details"]["fields"][0]
         return field["loc"], field["type"]
 
-    clock.advance(30)
-    good_code = totp_code(admin, clock)
     strong = random_password()
     cases = [
-        ((admin.password, "short", good_code), (["body", "new_password"], "password_too_short")),
+        ((admin.password, "short"), (["body", "new_password"], "password_too_short")),
         (
-            (admin.password, "my-OPERATOR-pass-1", good_code),
+            (admin.password, "my-OPERATOR-pass-1"),
             (["body", "new_password"], "password_contains_username"),
         ),
-        (
-            (admin.password, "Qwerty123456", good_code),
-            (["body", "new_password"], "password_too_common"),
-        ),
-        ((random_password(), strong, good_code), (["body", "old_password"], "invalid_password")),
-        ((admin.password, strong, wrong_code(good_code)), (["body", "code"], "invalid_code")),
+        ((admin.password, "Qwerty123456"), (["body", "new_password"], "password_too_common")),
+        ((random_password(), strong), (["body", "old_password"], "invalid_password")),
     ]
-    for (old, new, code), expected in cases:
-        response = await change(old, new, code)
+    for (old, new), expected in cases:
+        response = await change(old, new)
         assert response.status_code == 422, response.text
         assert error(response) == (expected[0], expected[1])
 
-    reused = await change(admin.password, admin.password, good_code)
+    reused = await change(admin.password, admin.password)
     assert reused.status_code == 422
     assert error(reused) == (["body", "new_password"], "password_reused")

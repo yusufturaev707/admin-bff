@@ -23,10 +23,8 @@ async def me(principal: PrincipalDep, service: AdminServiceDep) -> MeOut:
         username=data["username"],
         full_name=data["full_name"],
         auth_methods=data["auth_methods"],
-        totp_enabled=data["totp_enabled"],
         must_change_password=data["must_change_password"],
         roles=data["roles"],
         permissions=sorted(principal.permissions),
         scopes=data["scopes"],
-        mfa_at=principal.mfa_at,
     )

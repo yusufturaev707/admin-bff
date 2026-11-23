@@ -1,4 +1,9 @@
-"""Auth use cases (section 6). Routers stay thin: every decision is made here."""
+"""Auth use cases (section 6). Routers stay thin: every decision is made here.
+
+Sign-in is one step: username and password, or OneID. TOTP was removed at the
+owner's request (2026-11-23); with it went the mfa_token, recovery codes and
+step-up. A new admin's first session can only change the password.
+"""
 
 import hmac
 import uuid
@@ -9,8 +14,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.audit.sink import AuditEvent, AuditOutcome, AuditSink
-from app.auth import totp
-from app.auth.crypto import DecryptionError, SecretBox, new_token, sha256_hex
+from app.auth.crypto import new_token, sha256_hex
 from app.auth.lockout import LoginLimiter
 from app.auth.models import AdminUser, AuthMethod, normalize_username
 from app.auth.oneid import OneIdClient
@@ -23,9 +27,8 @@ from app.auth.providers import (
     OneIdCredentials,
     PasswordCredentials,
 )
-from app.auth.second_factor import RecoveryFactor, SecondFactor, SecondFactorVerifier, TotpFactor
 from app.auth.sessions import PendingStep, SessionData, SessionStore
-from app.auth.tickets import MfaTokenStore, OneTimeStore
+from app.auth.tickets import OneTimeStore
 from app.core.errors import AppError, ErrorCode, field_error
 from app.core.logging import get_logger
 from app.core.ratelimit import FixedWindowLimiter
@@ -33,11 +36,8 @@ from app.core.time import Clock
 from app.settings import Settings
 
 INVALID_CREDENTIALS = "Login yoki parol noto'g'ri"
-INVALID_CODE = "Kod noto'g'ri yoki muddati o'tgan"
 LOCKED = "Juda ko'p muvaffaqiyatsiz urinish. Keyinroq qayta urinib ko'ring"
-LOGIN_EXPIRED = "Kirish muddati tugadi, qaytadan kiring"
 
-TOTP_ENROLL_TTL_S = 10 * 60
 ONEID_STATE_TTL_S = 5 * 60
 
 logger = get_logger(__name__)
@@ -51,45 +51,20 @@ class RequestMeta:
 
 
 @dataclass(frozen=True, slots=True)
-class MfaRequired:
-    """Primary factor accepted; the client continues with POST /auth/mfa."""
-
-    mfa_token: str
-
-
-@dataclass(frozen=True, slots=True)
 class SessionStarted:
     session_id: str
     session: SessionData
-
-
-type LoginResult = MfaRequired | SessionStarted
-
-
-@dataclass(frozen=True, slots=True)
-class TotpEnrollment:
-    secret: str
-    otpauth_uri: str
-
-
-@dataclass(frozen=True, slots=True)
-class TotpConfirmed:
-    started: SessionStarted
-    recovery_codes: list[str]
 
 
 class OneIdLoginError(Exception):
     """Any OneID callback failure; the browser gets one generic error page."""
 
 
-def _pending_steps(user: AdminUser, *, totp_ready: bool) -> list[PendingStep]:
-    steps: list[PendingStep] = []
-    if not totp_ready:
-        steps.append(PendingStep.TOTP_ENROLLMENT)
+def _pending_steps(user: AdminUser) -> list[PendingStep]:
     # A OneID-only admin has no password to change.
     if user.must_change_password and user.password_hash is not None:
-        steps.append(PendingStep.PASSWORD_CHANGE)
-    return steps
+        return [PendingStep.PASSWORD_CHANGE]
+    return []
 
 
 class AuthService:
@@ -99,9 +74,7 @@ class AuthService:
         settings: Settings,
         db: async_sessionmaker[AsyncSession],
         passwords: PasswordService,
-        second_factor: SecondFactorVerifier,
         sessions: SessionStore,
-        mfa_tokens: MfaTokenStore,
         one_time: OneTimeStore,
         limiter: LoginLimiter,
         audit: AuditSink,
@@ -112,9 +85,7 @@ class AuthService:
         self._settings = settings
         self._db = db
         self._passwords = passwords
-        self._second_factor = second_factor
         self.sessions = sessions
-        self._mfa_tokens = mfa_tokens
         self._one_time = one_time
         self.limiter = limiter
         # Per-session request rate (section 11), checked by current_session.
@@ -123,11 +94,11 @@ class AuthService:
         self._clock = clock
         self._oneid_client = oneid_client
         self._providers: dict[AuthMethod, AuthProvider[Any]] = {
-            AuthMethod.PASSWORD: LocalAuthProvider(second_factor, passwords),
+            AuthMethod.PASSWORD: LocalAuthProvider(passwords),
         }
         self._oneid: OneIdAuthProvider | None = None
         if oneid_client is not None:
-            self._oneid = OneIdAuthProvider(second_factor, oneid_client, settings.pinfl_key())
+            self._oneid = OneIdAuthProvider(oneid_client, settings.pinfl_key())
             self._providers[AuthMethod.ONEID] = self._oneid
 
     # --- helpers -----------------------------------------------------------
@@ -188,50 +159,28 @@ class AuthService:
             logger.warning("auth_lockout", rule=rule.name, ip=meta.ip)
 
     async def _start_session(
-        self, user: AdminUser, method: AuthMethod, meta: RequestMeta, *, mfa_done: bool
+        self, user: AdminUser, method: AuthMethod, meta: RequestMeta, step: str
     ) -> SessionStarted:
-        now = self._clock()
+        """Always a new session id (session fixation protection)."""
         session_id, session = await self.sessions.create(
             user_id=user.id,
             username=user.username,
             auth_method=method,
             ip=meta.ip,
             user_agent=meta.user_agent,
-            mfa_at=now if mfa_done else None,
-            pending=_pending_steps(
-                user, totp_ready=user.totp_enabled or not self._settings.totp_required
-            ),
+            pending=_pending_steps(user),
             perm_version=user.perm_version,
+        )
+        await self._audit(
+            "auth.login", AuditOutcome.SUCCESS, meta, user=user, session=session, step=step
         )
         return SessionStarted(session_id, session)
 
-    async def _after_primary_factor(
-        self, user: AdminUser, method: AuthMethod, meta: RequestMeta
-    ) -> LoginResult:
-        totp_required = self._settings.totp_required
-        if user.totp_enabled and totp_required:
-            token = await self._mfa_tokens.issue(
-                user_id=user.id, username=user.username, method=method
-            )
-            return MfaRequired(token)
-        # First sign-in: no TOTP yet. A restricted session that can only enroll
-        # TOTP (and then change the password) is the only thing granted.
-        # Without TOTP (development) the session is a full one at once.
-        started = await self._start_session(user, method, meta, mfa_done=not totp_required)
-        await self._audit(
-            "auth.login",
-            AuditOutcome.SUCCESS,
-            meta,
-            user=user,
-            session=started.session,
-            step="setup" if started.session.pending else "session",
-            totp_required=totp_required,
-        )
-        return started
-
     # --- login ---------------------------------------------------------------
 
-    async def login_password(self, username: str, password: str, meta: RequestMeta) -> LoginResult:
+    async def login_password(
+        self, username: str, password: str, meta: RequestMeta
+    ) -> SessionStarted:
         normalized = normalize_username(username)
         await self._ensure_not_locked(normalized, meta)
         failure: AuthFailedError | None = None
@@ -242,6 +191,8 @@ class AuthService:
                 )
             except AuthFailedError as exc:
                 failure = exc
+            else:
+                user.last_login_at = self._clock()
         if failure is not None:
             await self._register_failure(normalized, meta)
             await self._audit(
@@ -254,62 +205,9 @@ class AuthService:
                 reason=failure.reason,
             )
             raise AppError(ErrorCode.NOT_AUTHENTICATED, INVALID_CREDENTIALS)
-        await self._audit("auth.login", AuditOutcome.SUCCESS, meta, user=user, step="password")
-        return await self._after_primary_factor(user, AuthMethod.PASSWORD, meta)
-
-    async def complete_mfa(
-        self, mfa_token: str, factor: SecondFactor, meta: RequestMeta
-    ) -> SessionStarted:
-        ticket = await self._mfa_tokens.get(mfa_token)
-        if ticket is None:
-            raise AppError(ErrorCode.SESSION_EXPIRED, LOGIN_EXPIRED)
-        await self._ensure_not_locked(ticket.username, meta)
-        factor_name = "recovery_code" if isinstance(factor, RecoveryFactor) else "code"
-        async with self._db() as db, db.begin():
-            user = await db.get(AdminUser, ticket.user_id)
-            if user is None or not user.is_active or not user.allows(ticket.method):
-                await self._mfa_tokens.consume(mfa_token)
-                raise AppError(ErrorCode.SESSION_EXPIRED, LOGIN_EXPIRED)
-            ok = await self._providers[ticket.method].verify_second_factor(db, user, factor)
-            if ok:
-                user.last_login_at = self._clock()
-            remaining = (
-                await self._second_factor.remaining_recovery_codes(db, user.id)
-                if ok and factor_name == "recovery_code"
-                else None
-            )
-        if not ok:
-            await self._mfa_tokens.record_failure(mfa_token)
-            await self._register_failure(ticket.username, meta)
-            await self._audit(
-                "auth.login", AuditOutcome.DENIED, meta, user=user, step="mfa", factor=factor_name
-            )
-            raise field_error(("body", factor_name), "invalid_code", INVALID_CODE)
-        if not await self._mfa_tokens.consume(mfa_token):
-            # Another request finished this login first.
-            raise AppError(ErrorCode.SESSION_EXPIRED, LOGIN_EXPIRED)
-        await self.limiter.reset_user(ticket.username)
-        started = await self._start_session(user, ticket.method, meta, mfa_done=True)
-        await self._audit(
-            "auth.login",
-            AuditOutcome.SUCCESS,
-            meta,
-            user=user,
-            session=started.session,
-            step="mfa",
-            factor=factor_name,
-            method=ticket.method.value,
-        )
-        if remaining is not None:
-            await self._audit(
-                "auth.recovery_code.use",
-                AuditOutcome.SUCCESS,
-                meta,
-                user=user,
-                session=started.session,
-                remaining=remaining,
-            )
-        return started
+        if normalized is not None:
+            await self.limiter.reset_user(normalized)
+        return await self._start_session(user, AuthMethod.PASSWORD, meta, step="password")
 
     async def logout(self, session: SessionData, meta: RequestMeta) -> None:
         await self.sessions.delete(session)
@@ -335,10 +233,8 @@ class AuthService:
         return target.key == session.key
 
     async def revoke_all_sessions(self, user_id: uuid.UUID) -> int:
-        """Used on password change, block and role change (Phase 2)."""
+        """Used on password change, block and role change."""
         return await self.sessions.delete_all_for_user(user_id)
-
-    # --- TOTP enrollment ---------------------------------------------------
 
     async def _load_user(self, db: AsyncSession, session: SessionData) -> AdminUser:
         user = await db.get(AdminUser, session.user_id)
@@ -347,98 +243,24 @@ class AuthService:
             raise AppError(ErrorCode.SESSION_EXPIRED)
         return user
 
-    async def enroll_totp(self, session: SessionData, meta: RequestMeta) -> TotpEnrollment:
-        async with self._db() as db:
-            user = await self._load_user(db, session)
-        if user.totp_enabled:
-            raise AppError(ErrorCode.CONFLICT, "TOTP allaqachon ulangan")
-        secret = totp.new_secret()
-        await self._one_time.put(
-            "totp_enroll",
-            session.key,
-            self._second_factor.encrypt_secret(user.id, secret),
-            ttl_s=TOTP_ENROLL_TTL_S,
-        )
-        await self._audit(
-            "auth.totp.enroll", AuditOutcome.SUCCESS, meta, session=session, step="start"
-        )
-        return TotpEnrollment(
-            secret=secret,
-            otpauth_uri=totp.provisioning_uri(
-                secret, username=user.username, issuer=self._settings.totp_issuer
-            ),
-        )
-
-    async def confirm_totp(
-        self, session: SessionData, code: str, meta: RequestMeta
-    ) -> TotpConfirmed:
-        blob = await self._one_time.get("totp_enroll", session.key)
-        if blob is None:
-            raise AppError(ErrorCode.CONFLICT, "Avval TOTP ulashni boshlang")
-        try:
-            secret = self._second_factor.decrypt_secret(session.user_id, blob)
-        except DecryptionError as exc:
-            raise AppError(ErrorCode.CONFLICT, "Avval TOTP ulashni boshlang") from exc
-        step = totp.match_timecode(secret, code, self._clock())
-        if step is None:
-            raise field_error(("body", "code"), "invalid_code", INVALID_CODE)
-        async with self._db() as db, db.begin():
-            user = await self._load_user(db, session)
-            if user.totp_enabled:
-                raise AppError(ErrorCode.CONFLICT, "TOTP allaqachon ulangan")
-            user.totp_secret_enc = blob
-            user.totp_confirmed_at = self._clock()
-            user.totp_last_timecode = step
-            recovery_codes = await self._second_factor.replace_recovery_codes(db, user.id)
-        await self._one_time.delete("totp_enroll", session.key)
-        # Privilege change: the session gets a new id (and CSRF token).
-        session_id, rotated = await self.sessions.rotate(
-            session,
-            mfa_at=self._clock(),
-            pending=tuple(p for p in session.pending if p is not PendingStep.TOTP_ENROLLMENT),
-        )
-        await self._audit(
-            "auth.totp.enroll", AuditOutcome.SUCCESS, meta, session=rotated, step="confirm"
-        )
-        return TotpConfirmed(SessionStarted(session_id, rotated), recovery_codes)
-
-    # --- password and step-up ---------------------------------------------
+    # --- password ------------------------------------------------------------
 
     async def change_password(
-        self,
-        session: SessionData,
-        old_password: str,
-        new_password: str,
-        code: str | None,
-        meta: RequestMeta,
+        self, session: SessionData, old_password: str, new_password: str, meta: RequestMeta
     ) -> None:
-        """Needs the current password and a TOTP code (unless TOTP is off).
-        Ends every session of the admin."""
-        failure: str | None = None
-        totp_required = self._settings.totp_required
-        if totp_required and code is None:
-            raise field_error(("body", "code"), "invalid_code", INVALID_CODE)
+        """Needs the current password. Ends every session of the admin."""
+        wrong_password = False
         async with self._db() as db, db.begin():
             user = await self._load_user(db, session)
-            if totp_required and not user.totp_enabled:
-                raise AppError(
-                    ErrorCode.FORBIDDEN,
-                    "Avval TOTP'ni ulang",
-                    details={"pending": [PendingStep.TOTP_ENROLLMENT.value]},
-                )
             if user.password_hash is None:
                 raise AppError(ErrorCode.CONFLICT, "Bu hisob uchun parol o'rnatilmagan")
-            # The policy is checked first: it needs no secret and must not burn a TOTP code.
+            # The policy is checked first: it needs no secret.
             try:
                 check_password_policy(new_password, username=user.username)
             except PasswordPolicyError as exc:
                 raise field_error(("body", "new_password"), exc.reason, exc.message) from exc
             if not await self._passwords.verify(user.password_hash, old_password):
-                failure = "old_password"
-            elif totp_required and not await self._second_factor.verify(
-                db, user, TotpFactor(code or "")
-            ):
-                failure = "code"
+                wrong_password = True
             elif await self._passwords.verify(user.password_hash, new_password):
                 raise field_error(
                     ("body", "new_password"), "password_reused", "Yangi parol eskisidan farq qilsin"
@@ -447,14 +269,16 @@ class AuthService:
                 user.password_hash = await self._passwords.hash(new_password)
                 user.password_changed_at = self._clock()
                 user.must_change_password = False
-        if failure is not None:
+        if wrong_password:
             await self._register_failure(session.username, meta)
             await self._audit(
-                "auth.password.change", AuditOutcome.DENIED, meta, session=session, reason=failure
+                "auth.password.change",
+                AuditOutcome.DENIED,
+                meta,
+                session=session,
+                reason="old_password",
             )
-            message = "Joriy parol noto'g'ri" if failure == "old_password" else INVALID_CODE
-            error_type = "invalid_password" if failure == "old_password" else "invalid_code"
-            raise field_error(("body", failure), error_type, message)
+            raise field_error(("body", "old_password"), "invalid_password", "Joriy parol noto'g'ri")
         revoked = await self.revoke_all_sessions(session.user_id)
         await self._audit(
             "auth.password.change",
@@ -463,21 +287,6 @@ class AuthService:
             session=session,
             revoked_sessions=revoked,
         )
-
-    async def step_up(self, session: SessionData, code: str, meta: RequestMeta) -> SessionData:
-        await self._ensure_not_locked(session.username, meta)
-        async with self._db() as db, db.begin():
-            user = await self._load_user(db, session)
-            ok = await self._second_factor.verify(db, user, TotpFactor(code))
-        if not ok:
-            await self._register_failure(session.username, meta)
-            await self._audit("auth.step_up", AuditOutcome.DENIED, meta, session=session)
-            raise field_error(("body", "code"), "invalid_code", INVALID_CODE)
-        updated = await self.sessions.update(session, mfa_at=self._clock())
-        if updated is None:
-            raise AppError(ErrorCode.SESSION_EXPIRED)
-        await self._audit("auth.step_up", AuditOutcome.SUCCESS, meta, session=updated)
-        return updated
 
     # --- OneID (template) ----------------------------------------------------
 
@@ -496,7 +305,7 @@ class AuthService:
 
     async def oneid_callback(
         self, code: str | None, state: str | None, cookie_state: str | None, meta: RequestMeta
-    ) -> LoginResult:
+    ) -> SessionStarted:
         if self._oneid is None:
             raise AppError(ErrorCode.NOT_FOUND)
         # Bytes comparison: query values may contain non-ASCII text.
@@ -524,6 +333,8 @@ class AuthService:
                 user = await self._oneid.authenticate(db, OneIdCredentials(code))
             except AuthFailedError as exc:
                 failure = exc
+            else:
+                user.last_login_at = self._clock()
         if failure is not None:
             await self._register_failure(None, meta)
             await self._audit(
@@ -535,8 +346,7 @@ class AuthService:
                 reason=failure.reason,
             )
             raise OneIdLoginError
-        await self._audit("auth.login", AuditOutcome.SUCCESS, meta, user=user, step="oneid")
-        return await self._after_primary_factor(user, AuthMethod.ONEID, meta)
+        return await self._start_session(user, AuthMethod.ONEID, meta, step="oneid")
 
 
 def build_auth_service(
@@ -549,16 +359,10 @@ def build_auth_service(
     oneid_client: OneIdClient | None,
 ) -> AuthService:
     prefix = settings.redis_key_prefix
-    passwords = PasswordService(settings)
     return AuthService(
         settings=settings,
         db=db,
-        passwords=passwords,
-        second_factor=SecondFactorVerifier(
-            box=SecretBox(settings.totp_key(), previous=settings.totp_previous_keys()),
-            passwords=passwords,
-            clock=clock,
-        ),
+        passwords=PasswordService(settings),
         sessions=SessionStore(
             redis,
             prefix=prefix,
@@ -566,7 +370,6 @@ def build_auth_service(
             absolute_timeout_s=settings.session_absolute_timeout_s,
             clock=clock,
         ),
-        mfa_tokens=MfaTokenStore(redis, prefix=prefix),
         one_time=OneTimeStore(redis, prefix=prefix),
         limiter=LoginLimiter(redis, prefix=prefix),
         audit=audit,

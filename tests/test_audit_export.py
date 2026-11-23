@@ -1,4 +1,4 @@
-"""POST /api/v1/audit/export: CSV, step-up, rate limit, audited (sections 9 and 11)."""
+"""POST /api/v1/audit/export: CSV, rate limit, audited (sections 9 and 11)."""
 
 import csv
 import io
@@ -82,7 +82,7 @@ async def test_export_is_audited(
     }
 
 
-async def test_export_needs_its_permission_and_a_recent_totp(
+async def test_export_needs_its_permission_and_the_csrf_token(
     client: httpx.AsyncClient, settings: Settings, clock: FakeClock
 ) -> None:
     reader = await make_admin_with(settings, clock, ["audit:logs:read"])
@@ -91,12 +91,7 @@ async def test_export_needs_its_permission_and_a_recent_totp(
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "forbidden"
 
-    csrf = await _exporter(client, settings, clock)
-    clock.advance(301)
-    response = await client.post(EXPORT, json={}, headers={"X-CSRF-Token": csrf})
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "step_up_required"
-
+    await _exporter(client, settings, clock)
     response = await client.post(EXPORT, json={})  # no CSRF token
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "csrf_failed"

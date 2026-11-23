@@ -39,7 +39,6 @@ return 1
 class PendingStep(StrEnum):
     """Setup steps that must be finished before the session gets full access."""
 
-    TOTP_ENROLLMENT = "totp_enrollment"
     PASSWORD_CHANGE = "password_change"  # noqa: S105 - a step name, not a secret  # nosec B105
 
 
@@ -51,7 +50,6 @@ class SessionData:
     auth_method: AuthMethod
     created_at: datetime
     last_seen: datetime
-    mfa_at: datetime | None
     ip: str
     user_agent: str
     csrf_token: str
@@ -69,7 +67,6 @@ class SessionData:
             "auth_method": self.auth_method.value,
             "created_at": self.created_at.isoformat(),
             "last_seen": self.last_seen.isoformat(),
-            "mfa_at": self.mfa_at.isoformat() if self.mfa_at else "",
             "ip": self.ip,
             "user_agent": self.user_agent,
             "csrf_token": self.csrf_token,
@@ -94,7 +91,6 @@ class SessionData:
                 auth_method=AuthMethod(fields["auth_method"]),
                 created_at=datetime.fromisoformat(fields["created_at"]),
                 last_seen=datetime.fromisoformat(fields["last_seen"]),
-                mfa_at=datetime.fromisoformat(fields["mfa_at"]) if fields["mfa_at"] else None,
                 ip=fields["ip"],
                 user_agent=fields["user_agent"],
                 csrf_token=fields["csrf_token"],
@@ -147,7 +143,6 @@ class SessionStore:
         auth_method: AuthMethod,
         ip: str,
         user_agent: str,
-        mfa_at: datetime | None,
         pending: Sequence[PendingStep],
         perm_version: int,
         created_at: datetime | None = None,
@@ -162,7 +157,6 @@ class SessionStore:
             auth_method=auth_method,
             created_at=created_at or now,
             last_seen=now,
-            mfa_at=mfa_at,
             ip=ip,
             user_agent=user_agent[:_USER_AGENT_MAX],
             csrf_token=new_token(),
@@ -218,7 +212,6 @@ class SessionStore:
             auth_method=merged.auth_method,
             ip=merged.ip,
             user_agent=merged.user_agent,
-            mfa_at=merged.mfa_at,
             pending=merged.pending,
             perm_version=merged.perm_version,
             created_at=data.created_at,

@@ -10,7 +10,7 @@ from app import main
 from app.api.docs import DOCS_URL, OPENAPI_URL, STATIC_URL
 from app.main import create_app
 from app.settings import Settings
-from tests.auth_helpers import AUTH, login, totp_code
+from tests.auth_helpers import AUTH, login
 from tests.conftest import FakeClock, Services
 from tests.helpers import app_client, extra_client
 from tests.rbac_helpers import make_admin_with, make_superadmin
@@ -84,18 +84,12 @@ async def test_swagger_signs_in_and_writes_outside_production(
     token taken from the sign-in response."""
     superadmin = await make_superadmin(settings, clock)
     async with extra_client(app, origin=SWAGGER_ORIGIN) as swagger:
-        clock.advance(30)
         start = await swagger.post(
             f"{AUTH}/login",
             json={"username": superadmin.username, "password": superadmin.password},
         )
         assert start.status_code == 200, start.text
-        mfa = await swagger.post(
-            f"{AUTH}/mfa",
-            json={"mfa_token": start.json()["mfa_token"], "code": totp_code(superadmin, clock)},
-        )
-        assert mfa.status_code == 200
-        csrf = mfa.json()["csrf_token"]
+        csrf = start.json()["csrf_token"]
         created = await swagger.post(
             "/api/v1/admin/roles",
             json={"name": "from_swagger", "permissions": []},
@@ -149,7 +143,5 @@ async def test_schema_states_the_access_of_every_operation(client: httpx.AsyncCl
     users = paths["/api/v1/admin/users"]
     assert users["get"]["security"] == [{"session": []}]
     assert users["get"]["x-permissions"] == ["admin:users:read"]
-    assert "x-step-up" not in users["get"]
     assert users["post"]["security"] == [{"session": [], "csrf": []}]
-    assert users["post"]["x-step-up"] is True
     assert "`admin:users:write`" in users["post"]["description"]

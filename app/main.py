@@ -58,22 +58,19 @@ OPENAPI_TAGS = [
     {"name": "admin", "description": "Adminlar, rollar va permission'larni boshqarish"},
     {
         "name": "auth",
-        "description": "Kirish: login + parol yoki OneID, keyin TOTP; sessiya, CSRF, step-up",
+        "description": "Kirish: login + parol yoki OneID; sessiya va CSRF",
     },
     {"name": "audit", "description": "Audit log: kim, qachon, nima qildi; CSV eksport"},
 ]
 
 API_DESCRIPTION = """Yagona adminka backend'i. Frontend faqat shu API bilan ishlaydi.
 
-* **Kirish:** `POST /api/v1/auth/login`, keyin `POST /api/v1/auth/mfa` (TOTP kod).
-  Sessiya `__Host-admin_session` HttpOnly cookie'sida turadi, frontend uni o'qimaydi.
+* **Kirish:** `POST /api/v1/auth/login` (login va parol). Sessiya `__Host-admin_session`
+  HttpOnly cookie'sida turadi, frontend uni o'qimaydi.
 * **CSRF:** har bir POST, PUT, PATCH va DELETE so'rovida `X-CSRF-Token` sarlavhasi.
   Token login javobida keladi, sahifa yangilansa `GET /api/v1/auth/session` beradi.
 * **Ruxsat:** har bir endpoint'da `x-permissions` (kerakli permission) ko'rsatilgan.
   Ruxsat bo'lmasa `403 forbidden`.
-* **Step-up:** `x-step-up: true` endpoint'lar uchun TOTP so'nggi 5 daqiqada kiritilgan
-  bo'lishi kerak, aks holda `401 step_up_required`: `POST /api/v1/auth/step-up`, keyin
-  so'rovni qaytaring.
 * **Xato formati:** `{"error": {"code", "message", "request_id", "details"}}`. Mantiq
   `code`ga qarab quriladi.
 * **Vaqt:** ISO 8601, UTC (`...Z`). ID'lar string.
@@ -179,9 +176,6 @@ def _lifespan(
                 "db": partial(ping_database, engine),
                 "redis": partial(ping_redis, redis),
             }
-            if not settings.totp_required:
-                # The owner's decision (docs/security.md); stays visible in the logs.
-                logger.warning("totp_disabled", detail="sign-in and step-up without TOTP")
             logger.info("startup", version=__version__, env=settings.app_env)
             yield
         finally:

@@ -8,11 +8,6 @@ Commands:
                        existing admin. There is no HTTP endpoint for this.
     sync-permissions   copies the permission registry to the DB (after deploy).
     unlock-login       lifts a login lockout of a username and/or an IP early.
-    reencrypt-totp     after a TOTP_ENC_KEY rotation, re-encrypts every TOTP
-                       secret with the current key (docs/security.md).
-    reset-totp         clears TOTP and recovery codes of one admin (--username)
-                       or of everyone (--all --yes, if TOTP_ENC_KEY is lost);
-                       they enroll again at the next sign-in.
     verify-audit       checks the audit hash chain; exits with 1 if it is broken.
     audit-retention    daily (systemd timer): creates the next audit partition
                        and drops whole partitions older than AUDIT_RETENTION_DAYS.
@@ -41,9 +36,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.sink import AuditEvent, AuditOutcome
 from app.audit.verify import apply_retention, verify_chain
 from app.audit.writer import DbAuditSink
-from app.auth.crypto import DecryptionError, SecretBox
 from app.auth.lockout import LoginLimiter
-from app.auth.models import AdminUser, AuthMethod, RecoveryCode, normalize_username
+from app.auth.models import AdminUser, AuthMethod, normalize_username
 from app.auth.passwords import PasswordPolicyError, PasswordService, check_password_policy
 from app.auth.sessions import SessionStore
 from app.core.db import create_engine, create_sessionmaker
@@ -219,8 +213,8 @@ async def create_superadmin(username_raw: str, *, existing: bool = False) -> int
                     id=uuid.uuid4(),
                     username=username,
                     password_hash=await PasswordService(settings).hash(password),
-                    # Section 6: every new admin changes the password and enrolls
-                    # TOTP at the first sign-in.
+                    # Section 6: every new admin changes the password at the
+                    # first sign-in.
                     must_change_password=True,
                     auth_methods=[AuthMethod.PASSWORD.value],
                     perm_version=0,
@@ -251,10 +245,7 @@ async def create_superadmin(username_raw: str, *, existing: bool = False) -> int
     if existing:
         _out(f"'{username}' superadmin qilindi (barcha huquqlar va hududlar).")
     else:
-        _out(
-            f"Superadmin '{username}' yaratildi. Birinchi kirishda TOTP ulanadi va parol "
-            "almashtiriladi."
-        )
+        _out(f"Superadmin '{username}' yaratildi. Birinchi kirishda parol almashtiriladi.")
     return 0
 
 
@@ -348,108 +339,6 @@ async def unlock_login(username_raw: str | None, ip: str | None) -> int:
 
 def _unlock_login(args: argparse.Namespace) -> int:
     return asyncio.run(unlock_login(args.username, args.ip))
-
-
-async def reencrypt_totp() -> int:
-    settings = load_settings()
-    box = SecretBox(settings.totp_key(), previous=settings.totp_previous_keys())
-    updated = unchanged = 0
-    failed: list[str] = []
-    engine = create_engine(settings)
-    try:
-        async with create_sessionmaker(engine)() as db, db.begin():
-            users = await db.scalars(
-                select(AdminUser).where(AdminUser.totp_secret_enc.is_not(None))
-            )
-            for user in users.all():
-                blob = user.totp_secret_enc
-                if blob is None or box.is_current(blob):
-                    unchanged += 1
-                    continue
-                try:
-                    secret = box.decrypt(blob, aad=user.id.bytes)
-                except DecryptionError:
-                    failed.append(user.username)
-                    continue
-                user.totp_secret_enc = box.encrypt(secret, aad=user.id.bytes)
-                updated += 1
-    finally:
-        await engine.dispose()
-    await _audit(
-        settings,
-        AuditEvent(
-            action="auth.totp.reencrypt",
-            outcome=AuditOutcome.ERROR if failed else AuditOutcome.SUCCESS,
-            details={"updated": updated, "unchanged": unchanged, "failed": failed},
-        ),
-    )
-    _out(f"Qayta shifrlandi: {updated}, o'zgarmadi: {unchanged}, ochib bo'lmadi: {len(failed)}.")
-    if failed:
-        _err(
-            "Bu adminlarning TOTP secret'ini sozlangan kalitlar bilan ochib bo'lmadi: "
-            f"{', '.join(failed)}. TOTP_ENC_KEY_PREVIOUS'ni tekshiring yoki ular uchun "
-            "reset-totp bajaring."
-        )
-        return 1
-    return 0
-
-
-def _reencrypt_totp(args: argparse.Namespace) -> int:
-    return asyncio.run(reencrypt_totp())
-
-
-async def reset_totp(username_raw: str | None, *, everyone: bool, confirmed: bool) -> int:
-    if everyone and not confirmed:
-        _err("--all barcha adminlarning TOTP'ini o'chiradi: tasdiqlash uchun --yes qo'shing.")
-        return 2
-    username = normalize_username(username_raw) if username_raw else None
-    if everyone == bool(username_raw) or (username_raw and username is None):
-        _err("--username <login> yoki --all --yes kerak.")
-        return 2
-
-    settings = load_settings()
-    engine = create_engine(settings)
-    redis = create_redis(settings)
-    try:
-        async with create_sessionmaker(engine)() as db, db.begin():
-            query = select(AdminUser)
-            if not everyone:
-                query = query.where(AdminUser.username == username)
-            users = list((await db.scalars(query)).all())
-            if not users:
-                _err("Admin topilmadi.")
-                return 1
-            for user in users:
-                user.totp_secret_enc = None
-                user.totp_confirmed_at = None
-                user.totp_last_timecode = None
-            await db.execute(
-                delete(RecoveryCode).where(RecoveryCode.user_id.in_([u.id for u in users]))
-            )
-        # Existing sessions were created with the old second factor: end them.
-        sessions = _sessions(settings, redis)
-        for user in users:
-            await sessions.delete_all_for_user(user.id)
-    finally:
-        await redis.aclose()
-        await engine.dispose()
-    await _audit(
-        settings,
-        AuditEvent(
-            action="auth.totp.reset",
-            outcome=AuditOutcome.SUCCESS,
-            details={"all": everyone, "usernames": [u.username for u in users]},
-        ),
-    )
-    _out(
-        f"{len(users)} ta adminning TOTP'i o'chirildi, sessiyalari tugatildi. "
-        "Ular keyingi kirishda TOTP'ni qaytadan ulaydi."
-    )
-    return 0
-
-
-def _reset_totp(args: argparse.Namespace) -> int:
-    return asyncio.run(reset_totp(args.username, everyone=args.all, confirmed=args.yes))
 
 
 async def verify_audit() -> int:
@@ -552,17 +441,6 @@ def build_parser() -> argparse.ArgumentParser:
     unlock.add_argument("--username")
     unlock.add_argument("--ip")
     unlock.set_defaults(handler=_unlock_login)
-
-    reencrypt = commands.add_parser(
-        "reencrypt-totp", help="TOTP secret'larini joriy TOTP_ENC_KEY bilan qayta shifrlash"
-    )
-    reencrypt.set_defaults(handler=_reencrypt_totp)
-
-    reset = commands.add_parser("reset-totp", help="adminning TOTP'ini o'chirish (qayta ulash)")
-    reset.add_argument("--username")
-    reset.add_argument("--all", action="store_true", help="barcha adminlar (kalit yo'qolganda)")
-    reset.add_argument("--yes", action="store_true", help="--all ni tasdiqlash")
-    reset.set_defaults(handler=_reset_totp)
 
     verify = commands.add_parser("verify-audit", help="audit hash zanjirini tekshirish")
     verify.set_defaults(handler=_verify_audit)

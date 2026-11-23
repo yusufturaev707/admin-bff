@@ -9,7 +9,7 @@ Rules against privilege escalation, enforced for every change:
   superadmin cannot be demoted or blocked.
 
 A role change takes effect on the next request (perm_version, see principal.py);
-an admin whose roles change, who is blocked or whose credentials are reset also
+an admin whose roles change, who is blocked or whose password is reset also
 loses every session (section 6).
 """
 
@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.audit.sink import AuditEvent, AuditOutcome, AuditSink
 from app.auth.crypto import hmac_sha256_hex
 from app.auth.lockout import LoginLimiter
-from app.auth.models import AdminUser, AuthMethod, RecoveryCode, normalize_username
+from app.auth.models import AdminUser, AuthMethod, normalize_username
 from app.auth.passwords import PasswordPolicyError, PasswordService, check_password_policy
 from app.auth.service import RequestMeta
 from app.auth.sessions import SessionStore
@@ -511,19 +511,6 @@ class AdminService:
             "admin.user.password_reset", actor, meta, resource="users", resource_id=user_id
         )
         return password
-
-    async def reset_totp(self, actor: Principal, meta: RequestMeta, user_id: uuid.UUID) -> None:
-        async with self._db() as db, db.begin():
-            user = await self._user_or_404(db, user_id)
-            await self._ensure_can_manage(db, actor, user)
-            user.totp_secret_enc = None
-            user.totp_confirmed_at = None
-            user.totp_last_timecode = None
-            await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
-        await self._after_change([], revoke=[user_id])
-        await self._audit(
-            "admin.user.totp_reset", actor, meta, resource="users", resource_id=user_id
-        )
 
     async def unlock(self, actor: Principal, meta: RequestMeta, user_id: uuid.UUID) -> None:
         async with self._db() as db:

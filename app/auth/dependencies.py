@@ -1,15 +1,12 @@
 """FastAPI dependencies of the auth module.
 
 * `current_session`: a valid session (setup sessions included) + CSRF token;
-* `require_authenticated`: a fully set-up session (TOTP enrolled, password changed);
-* `require_recent_mfa(max_age_s)`: TOTP entered recently (step-up, section 7).
+* `require_authenticated`: a fully set-up session (password changed).
 
 Phase 2 builds `require("perm")` on top of `require_authenticated`.
 """
 
 import hmac
-from collections.abc import Awaitable, Callable
-from datetime import timedelta
 from typing import Annotated
 
 import structlog
@@ -20,7 +17,7 @@ from app.auth.csrf import UNSAFE_METHODS
 from app.auth.service import AuthService, RequestMeta
 from app.auth.sessions import SessionData
 from app.core.errors import AppError, ErrorCode
-from app.core.guards import mark_guard, mark_step_up
+from app.core.guards import mark_guard
 from app.core.metrics import RATE_LIMITED
 from app.core.request_id import get_request_id
 from app.core.time import Clock
@@ -114,20 +111,3 @@ async def require_authenticated(session: CurrentSession) -> SessionData:
 
 mark_guard(require_authenticated)
 AuthenticatedSession = Annotated[SessionData, Depends(require_authenticated)]
-
-
-def require_recent_mfa(max_age_s: int = 300) -> Callable[..., Awaitable[SessionData]]:
-    """401 `step_up_required` unless TOTP was entered within `max_age_s` seconds."""
-
-    async def dependency(
-        request: Request,
-        session: AuthenticatedSession,
-        clock: Annotated[Clock, Depends(get_clock)],
-    ) -> SessionData:
-        if not request.app.state.settings.totp_required:
-            return session  # TOTP is off (development only): nothing to re-enter
-        if session.mfa_at is None or clock() - session.mfa_at > timedelta(seconds=max_age_s):
-            raise AppError(ErrorCode.STEP_UP_REQUIRED)
-        return session
-
-    return mark_step_up(dependency)

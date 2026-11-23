@@ -34,7 +34,6 @@ class UserOut(BaseModel):
     full_name: str | None
     is_active: bool
     auth_methods: list[AuthMethod]
-    totp_enabled: bool
     must_change_password: bool
     pinfl_masked: str | None
     roles: list[RoleRef]
@@ -152,12 +151,10 @@ class MeOut(BaseModel):
     username: str
     full_name: str | None
     auth_methods: list[AuthMethod]
-    totp_enabled: bool
     must_change_password: bool
     roles: list[RoleRef]
     permissions: list[str] = Field(description="Berilgan permission'lar, wildcard bo'lishi mumkin")
     scopes: list[Scope]
-    mfa_at: datetime | None
 
 
 UserSort = Literal[

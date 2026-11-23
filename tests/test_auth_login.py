@@ -1,24 +1,16 @@
-"""Section 6 / 12: login, TOTP, lockout, mfa token, session fixation."""
+"""Section 6 / 12: login, lockout, session fixation."""
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from redis.asyncio import Redis
 
 from app.audit.sink import AuditOutcome
 from app.auth.crypto import sha256_hex
 from app.auth.dependencies import SESSION_COOKIE
 from app.main import create_app
 from app.settings import Settings
-from tests.auth_helpers import (
-    AUTH,
-    create_admin,
-    random_password,
-    start_login,
-    totp_code,
-    wrong_code,
-)
-from tests.conftest import AuditRecorder, FakeClock, Services, random_key
+from tests.auth_helpers import AUTH, create_admin, random_password, start_login
+from tests.conftest import AuditRecorder, FakeClock, Services
 from tests.helpers import app_client, extra_client
 
 
@@ -28,24 +20,16 @@ def _body_without_request_id(response: httpx.Response) -> dict[str, object]:
     return error
 
 
-async def test_login_with_password_and_totp(
+async def test_login_with_password(
     client: httpx.AsyncClient, settings: Settings, clock: FakeClock, audit: AuditRecorder
 ) -> None:
     admin = await create_admin(settings, clock)
 
-    first = await start_login(client, admin)
-    assert first.status_code == 200
-    assert first.headers["cache-control"] == "no-store"
-    body = first.json()
-    assert body["mfa_required"] is True
-    assert body["mfa_token"]
-    assert SESSION_COOKIE not in first.cookies  # no session before the second factor
-
-    second = await client.post(
-        f"{AUTH}/mfa", json={"mfa_token": body["mfa_token"], "code": totp_code(admin, clock)}
-    )
+    second = await start_login(client, admin)
     assert second.status_code == 200
+    assert second.headers["cache-control"] == "no-store"
     assert second.json()["setup_required"] is False
+    assert second.json()["pending"] == []
     cookie = second.headers["set-cookie"]
     assert cookie.startswith(f"{SESSION_COOKIE}=")
     for attribute in ("HttpOnly", "Secure", "SameSite=strict", "Path=/"):
@@ -156,78 +140,6 @@ async def test_ip_is_locked_after_twenty_failures(
         assert (await start_login(other, admin)).status_code == 200
 
 
-async def test_totp_code_cannot_be_used_twice(
-    client: httpx.AsyncClient, settings: Settings, clock: FakeClock
-) -> None:
-    admin = await create_admin(settings, clock)
-    code = totp_code(admin, clock)
-    token = (await start_login(client, admin)).json()["mfa_token"]
-    assert (
-        await client.post(f"{AUTH}/mfa", json={"mfa_token": token, "code": code})
-    ).status_code == 200
-
-    token = (await start_login(client, admin)).json()["mfa_token"]
-    replay = await client.post(f"{AUTH}/mfa", json={"mfa_token": token, "code": code})
-    assert replay.status_code == 422
-    assert replay.json()["error"]["details"]["fields"][0]["type"] == "invalid_code"
-
-
-async def test_mfa_token_is_single_use(
-    client: httpx.AsyncClient, settings: Settings, clock: FakeClock
-) -> None:
-    admin = await create_admin(settings, clock)
-    token = (await start_login(client, admin)).json()["mfa_token"]
-    ok = await client.post(
-        f"{AUTH}/mfa", json={"mfa_token": token, "code": totp_code(admin, clock)}
-    )
-    assert ok.status_code == 200
-
-    clock.advance(30)
-    again = await client.post(
-        f"{AUTH}/mfa", json={"mfa_token": token, "code": totp_code(admin, clock)}
-    )
-    assert again.status_code == 401
-    assert again.json()["error"]["code"] == "session_expired"
-
-
-async def test_mfa_token_dies_after_five_wrong_codes(
-    client: httpx.AsyncClient, settings: Settings, clock: FakeClock
-) -> None:
-    admin = await create_admin(settings, clock)
-    token = (await start_login(client, admin)).json()["mfa_token"]
-    good = totp_code(admin, clock)
-    wrong = wrong_code(good)
-    for _ in range(5):
-        response = await client.post(f"{AUTH}/mfa", json={"mfa_token": token, "code": wrong})
-        assert response.status_code == 422
-
-    response = await client.post(f"{AUTH}/mfa", json={"mfa_token": token, "code": good})
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "session_expired"
-
-
-async def test_mfa_token_lives_five_minutes(
-    client: httpx.AsyncClient, settings: Settings, clock: FakeClock, services: Services
-) -> None:
-    admin = await create_admin(settings, clock)
-    token = (await start_login(client, admin)).json()["mfa_token"]
-    redis: Redis = services.redis()
-    try:
-        ttl = await redis.ttl(f"{services.redis_prefix}mfa:{sha256_hex(token)}")
-    finally:
-        await redis.aclose()
-    assert 0 < ttl <= 300
-
-
-async def test_mfa_request_needs_exactly_one_factor(client: httpx.AsyncClient) -> None:
-    for body in (
-        {"mfa_token": "x" * 43},
-        {"mfa_token": "x" * 43, "code": "123456", "recovery_code": "A" * 16},
-    ):
-        response = await client.post(f"{AUTH}/mfa", json=body)
-        assert response.status_code == 422
-
-
 @pytest.mark.usefixtures("client")  # runs the app lifespan
 async def test_session_id_changes_on_every_login(
     app: FastAPI, settings: Settings, clock: FakeClock
@@ -239,15 +151,10 @@ async def test_session_id_changes_on_every_login(
     async with extra_client(app) as browser:
         for _ in range(2):
             clock.advance(30)
-            start = await browser.post(
+            done = await browser.post(
                 f"{AUTH}/login",
                 headers=planted,
                 json={"username": admin.username, "password": admin.password},
-            )
-            done = await browser.post(
-                f"{AUTH}/mfa",
-                headers=planted,
-                json={"mfa_token": start.json()["mfa_token"], "code": totp_code(admin, clock)},
             )
             issued.append(done.cookies[SESSION_COOKIE])
         attacker_view = await browser.get(f"{AUTH}/session", headers=planted)
@@ -286,25 +193,5 @@ async def test_password_hash_is_upgraded_on_login(
         finally:
             await conn.close()
         assert ",t=2," in stored
-    finally:
-        await services.reset()
-
-
-async def test_undecryptable_totp_secret_is_a_server_error(
-    settings: Settings, clock: FakeClock, audit: AuditRecorder, services: Services
-) -> None:
-    admin = await create_admin(settings, clock)
-    misconfigured = settings.model_copy(update={"totp_enc_key": random_key()})
-    app = create_app(misconfigured, clock=clock, audit_listeners=[audit])
-    try:
-        async with app_client(app) as client:
-            token = (await start_login(client, admin)).json()["mfa_token"]
-            response = await client.post(
-                f"{AUTH}/mfa", json={"mfa_token": token, "code": totp_code(admin, clock)}
-            )
-        # Fails closed, and is not counted as the admin's wrong code.
-        assert response.status_code == 500
-        assert response.json()["error"]["code"] == "internal_error"
-        assert not audit.find("auth.login", AuditOutcome.DENIED)
     finally:
         await services.reset()
