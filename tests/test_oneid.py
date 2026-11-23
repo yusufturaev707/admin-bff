@@ -9,10 +9,10 @@ import pytest
 from fastapi import FastAPI
 from pydantic import SecretStr, ValidationError
 
+from app.api.v1.auth import ONEID_STATE_COOKIE
 from app.audit.sink import AuditOutcome
 from app.auth.dependencies import SESSION_COOKIE
 from app.auth.oneid import OneIdError, OneIdIdentity
-from app.auth.router import ONEID_STATE_COOKIE
 from app.main import create_app
 from app.settings import Settings
 from tests.auth_helpers import AUTH, create_admin

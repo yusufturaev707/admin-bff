@@ -15,12 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app import __version__
 from app.api import docs, health
-from app.api.v1 import admin, audit, me
+from app.api.v1 import admin, audit, auth, me
 from app.audit.middleware import AuditRequestMiddleware
 from app.audit.service import AuditLogService
 from app.audit.sink import AuditSink
 from app.audit.writer import DbAuditSink
-from app.auth import router as auth_router
 from app.auth.csrf import OriginCheckMiddleware
 from app.auth.dependencies import CSRF_HEADER
 from app.auth.oneid import OneIdClient, build_oneid_client
@@ -278,7 +277,7 @@ def create_app(
     app.add_route(METRICS_PATH, metrics_endpoint, include_in_schema=False)
     app.include_router(docs.router)
     app.mount(docs.STATIC_URL, docs.static_files(), name="swagger-ui")
-    app.include_router(auth_router.router)
+    app.include_router(auth.router)
     app.include_router(me.router)
     app.include_router(admin.router)
     app.include_router(audit.router)
