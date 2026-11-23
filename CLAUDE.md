@@ -33,6 +33,7 @@ Ish qoidalari:
 - Commit'lar kichik bo'lsin, har biri bitta mantiqiy o'zgarishdan iborat.
 - Shubha tug'ilsa, xavfsizroq variantni tanla va sababini izohda yoz.
 - **Egasining qarori (2026-11-23): `app/cli.py` va CI olib tashlandi** (GitHub Actions, GitLab CI, `scripts/ci.sh`, `scripts/check_coverage.py`, audit retention systemd timer'i). Hujjatda tilga olingan `app.cli` buyruqlari (`verify-audit`, `audit-retention`, `rotate-keys`) va "CI tekshiruvlari" hozircha amalda yo'q. Ularni qayta qo'shishdan oldin egasidan so'ra. Audit retention egasining qarori bilan kerak emas. Egasining so'roviga ko'ra `create-superadmin` o'rniga alohida skript bor: `uv run python -m scripts.create_superadmin --username <login>` (6-bo'lim). `sync-permissions` o'rniga `permissions` jadvalini ilova ishga tushishda o'zi registry bilan tenglashtiradi (`app/rbac/catalogue.py`); `role_permissions`ga u tegmaydi. Tekshiruvlar qo'lda ishga tushiriladi. OpenAPI snapshot'i `UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi.py` bilan yangilanadi. GitHub'da faqat `master` branch bor.
+- **Struktura (2026-11-23):** hamma HTTP endpoint'lar `app/api/v1/`da (`auth.py` ham), `app/auth`, `app/rbac`, `app/audit`da faqat mantiq. Bo'sh `app/connectors`, `app/events`, `app/service_auth` olib tashlandi: ular tegishli bosqich (4, 5, 8) boshlanganda 4-bo'limdagi sxema bo'yicha yaratiladi.
 
 ## 2. Mavjud tizimlar konteksti
 
