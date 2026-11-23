@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app import __version__
 from app.api import health
-from app.api.v1 import admin, me
+from app.api.v1 import admin, audit, me
 from app.audit.middleware import AuditRequestMiddleware
+from app.audit.service import AuditLogService
 from app.audit.sink import AuditSink
 from app.audit.writer import DbAuditSink
 from app.auth import router as auth_router
@@ -52,6 +53,7 @@ OPENAPI_TAGS = [
         "name": "auth",
         "description": "Kirish: login + parol yoki OneID, keyin TOTP; sessiya, CSRF, step-up",
     },
+    {"name": "audit", "description": "Audit log: kim, qachon, nima qildi; CSV eksport"},
 ]
 
 logger = get_logger(__name__)
@@ -128,6 +130,9 @@ def _lifespan(
                 limiter=auth_service.limiter,
                 passwords=PasswordService(settings),
                 audit=audit,
+            )
+            app.state.audit_log_service = AuditLogService(
+                db, redis=redis, prefix=settings.redis_key_prefix, audit=audit
             )
             app.state.readiness_checks = {
                 "db": partial(ping_database, engine),
@@ -208,4 +213,5 @@ def create_app(
     app.include_router(auth_router.router)
     app.include_router(me.router)
     app.include_router(admin.router)
+    app.include_router(audit.router)
     return app

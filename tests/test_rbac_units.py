@@ -73,7 +73,7 @@ def test_permission_spec_and_registry_rules() -> None:
 def test_core_registry_is_complete() -> None:
     registry = build_registry()
     assert {s.code for s in registry} == {s.code for s in CORE_PERMISSIONS}
-    assert [system for system, _ in registry.grouped()] == ["admin"]
+    assert [system for system, _ in registry.grouped()] == ["admin", "audit"]
 
 
 def test_principal_checks() -> None:

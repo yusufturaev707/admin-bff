@@ -70,6 +70,11 @@ CORE_PERMISSIONS = (
     PermissionSpec("admin:roles:read", "Rollar va permission'lar ro'yxatini ko'rish"),
     PermissionSpec("admin:roles:write", "Rol yaratish, tahrirlash va o'chirish"),
     PermissionSpec("admin:api:docs", "API hujjatini (Swagger) ko'rish"),
+    PermissionSpec("audit:logs:read", "Audit log'ni ko'rish: kim, qachon, nima qildi"),
+    PermissionSpec(
+        "audit:logs:export",
+        "Audit log'ni CSV faylga eksport qilish (yozuvlarni ko'rish ham shunga kiradi)",
+    ),
 )
 
 SYSTEM_DISPLAY_NAMES = {"admin": "Adminka boshqaruvi", "audit": "Audit"}
