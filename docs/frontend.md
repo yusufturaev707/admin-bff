@@ -5,8 +5,8 @@ Frontend faqat BFF API bilan ishlaydi. Sxema: `/api/v1/openapi.json`
 `openapi-typescript` yoki `orval` bilan generatsiya qiling.
 
 Bu hujjatda autentifikatsiya (1-bosqich), ruxsatlar va adminlarni
-boshqarish (2-bosqich) bor. Tizimlar uchun meta endpoint'lar keyingi
-bosqichlarda qo'shiladi.
+boshqarish (2-bosqich) hamda audit log (3-bosqich) bor. Tizimlar uchun meta
+endpoint'lar keyingi bosqichlarda qo'shiladi.
 
 ## Umumiy qoidalar
 
@@ -213,10 +213,90 @@ qarab quradi:
 - **OneID.** Admin `auth_methods: ["oneid"]` bilan yaratilsa, `pinfl` majburiy.
   Javobda faqat maskalangan ko'rinishi keladi (`pinfl_masked`).
 
+## Audit log: `/api/v1/audit`
+
+Kim, qachon, nima qildi. Yozuvni hech kim o'zgartira olmaydi va o'chira
+olmaydi. 90 kundan eski yozuvlar oylik bo'laklar bilan o'chiriladi.
+
+| Endpoint | Ruxsat |
+| --- | --- |
+| `GET /audit` | `audit:logs:read` |
+| `POST /audit/export` | `audit:logs:export` va step-up |
+
+**Ro'yxat.** `GET /api/v1/audit?action=auth.login&outcome=denied&limit=50`.
+Yangi yozuvlar birinchi keladi.
+
+```json
+{
+  "items": [
+    {
+      "id": "1042",
+      "ts": "2026-11-23T09:15:02.123456Z",
+      "actor_id": "...",
+      "actor_username": "superadmin",
+      "actor_ip": "10.20.30.40",
+      "action": "admin.user.roles",
+      "system_id": "admin",
+      "resource": "users",
+      "resource_id": "...",
+      "outcome": "success",
+      "status_code": null,
+      "request_id": "...",
+      "before": ["auditor"],
+      "after": ["auditor", "operator"],
+      "details": {}
+    }
+  ],
+  "next_cursor": "djE6MTA0Mg"
+}
+```
+
+- **Filtrlar** aniq qiymat bo'yicha ishlaydi: `actor_id`, `actor_username`,
+  `system_id`, `action`, `outcome` (`success`, `denied`, `error`), `resource`,
+  `resource_id`, `request_id`. Vaqt oralig'i `from` va `to` bilan beriladi,
+  timezone bilan (`...Z`). `from` oraliqqa kiradi, `to` kirmaydi.
+- **Keyingi sahifa.** Javobdagi `next_cursor`ni `cursor` parametri sifatida
+  yuboring, boshqa filtrlar o'zgarmasin. Oxirgi sahifada `next_cursor: null`.
+  Jami son (`total`) qaytmaydi, chunki jadval katta.
+- **Bitta ob'ektning tarixi:** `?resource=users&resource_id=<id>`. Masalan,
+  admin sahifasida "O'zgarishlar tarixi" bo'limi.
+- **Xatoni tekshirish.** Foydalanuvchi ko'rsatgan `request_id` bo'yicha
+  `?request_id=...` shu so'rovning yozuvlarini topadi.
+- **Ko'rsatish.** `action` qiymatlari: `auth.login`, `auth.logout`,
+  `auth.step_up`, `auth.lockout`, `admin.user.create`, `admin.role.update`,
+  `rbac.denied` (ruxsatsiz urinish), `http.request` va boshqalar.
+  `http.request` xizmat o'zi yozmagan har bir yozish so'rovi va har bir `403`
+  uchun yoziladi: unda `status_code` va `details.method`, `details.path`
+  bo'ladi. `before` va `after`da shaxsiy ma'lumotlar maskalangan keladi.
+
+**CSV eksport.** `POST /api/v1/audit/export`, body'da ro'yxatdagi filtrlar
+(hammasi ixtiyoriy):
+
+```http
+POST /api/v1/audit/export
+X-CSRF-Token: ...
+{"action": "auth.login", "from": "2026-11-01T00:00:00Z", "to": "2026-11-23T00:00:00Z"}
+```
+
+- Bu POST so'rov, shuning uchun oddiy `<a href>` ishlamaydi. `fetch` bilan
+  yuboring, `response.blob()`ni oling va `URL.createObjectURL` orqali
+  yuklab bering. Fayl nomi `Content-Disposition` sarlavhasida keladi.
+- TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak, aks holda
+  `401 step_up_required`.
+- Bir soatda ko'pi bilan 5 ta eksport. Oshsa `429 rate_limited` va
+  `Retry-After`.
+- Bitta faylda ko'pi bilan 100 000 yozuv. Ko'p bo'lsa
+  `422 validation_error`, `details.fields[0].type = "too_many_rows"`:
+  foydalanuvchiga filtrlarni toraytirishni ayting.
+- Fayl UTF-8 (BOM bilan, Excel to'g'ri ochadi), eski yozuvlar birinchi.
+- Har bir eksportning o'zi ham audit'ga yoziladi.
+
 ## Ro'yxatlar
 
 - **Pagination:** `?page=1&page_size=50`, `page_size` 100 dan oshmaydi. Javob
   `{"items": [...], "page": 1, "page_size": 50, "total": 120}`.
+- **Katta jadvallar** (audit) cursor bilan: `?cursor=&limit=50`, javobda
+  `next_cursor`.
 - **Saralash:** `?sort=username` yoki `?sort=-created_at` (minus kamayish
   tartibini bildiradi).
 - **Noma'lum parametr** `422` qaytaradi, `details.fields[0].type` esa

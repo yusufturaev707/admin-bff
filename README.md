@@ -5,8 +5,9 @@ ejournal, quloq dastur va keyin qo'shiladiganlar) shu BFF orqali bitta
 adminkadan boshqariladi. Frontend faqat shu API bilan ishlaydi
 (`/api/v1/openapi.json`, snapshot: `openapi/v1.json`).
 
-Holat: **2-bosqich (RBAC)**. Bosqichlar ro'yxati `CLAUDE.md`ning 12-bo'limida.
-Frontend uchun qo'llanma: [`docs/frontend.md`](docs/frontend.md).
+Holat: **3-bosqich (Audit)**. Bosqichlar ro'yxati `CLAUDE.md`ning 12-bo'limida.
+Frontend uchun qo'llanma: [`docs/frontend.md`](docs/frontend.md), xavfsizlik:
+[`docs/security.md`](docs/security.md).
 
 ## Talablar
 
@@ -36,6 +37,10 @@ testlar o'zlarining vaqtinchalik bazasini yaratadi.
 CREATE ROLE admin_bff LOGIN CREATEDB PASSWORD '...';
 CREATE DATABASE admin_bff OWNER admin_bff;
 ```
+
+Development'da bitta rol yetarli. Bunda audit jadvallarini faqat trigger'lar
+himoya qiladi, ilova esa ishga tushishda `audit_privileges_too_broad` deb
+ogohlantiradi. Production'da ikkita rol shart (pastda, "PostgreSQL rollari").
 
 ```bash
 uv run alembic upgrade head                                 # jadvallar
@@ -68,6 +73,11 @@ Testlar lokal PostgreSQL va Redis'da ishlaydi.
   shuning uchun testlar `FLUSHDB` qilmaydi. Ular tasodifiy prefiksli
   kalitlarni yaratadi va faqat shularni o'chiradi. Boshqa Redis kerak bo'lsa,
   `TEST_REDIS_URL` bering.
+- **Audit huquqlari testi.** `tests/test_audit_privileges.py` vaqtinchalik
+  ilova rolini yaratadi va oxirida o'chiradi. Buning uchun `DB_USER`da
+  `CREATEROLE` bo'lishi kerak, CI'da u bor. Bo'lmasa, bu testlar "skipped"
+  bo'lib o'tadi. Ularni o'tkazib yubormang:
+  `ALTER ROLE admin_bff CREATEROLE;`
 
 Hammasi bitta skriptda, CI ham shuni ishlatadi:
 
@@ -113,7 +123,9 @@ mavjud bo'lsa) `.env` umuman o'qilmaydi.
 | `LOG_LEVEL` | `INFO` | |
 | `LOG_FORMAT` | `json` | production'da faqat `json` |
 | `FRONTEND_ORIGIN` | yo'q | CORS va CSRF uchun yagona ruxsat etilgan origin |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | `127.0.0.1`, `5432`, `admin_bff`, `admin_bff` | `DB_HOST` unix socket papkasi ham bo'lishi mumkin |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | `127.0.0.1`, `5432`, `admin_bff`, `admin_bff` | `DB_HOST` unix socket papkasi ham bo'lishi mumkin. `DB_USER` servisning roli |
+| `DB_OWNER_USER` | yo'q | sxema egasi, faqat migratsiyalar uchun. Yo'q bo'lsa, `DB_USER` |
+| `AUDIT_RETENTION_DAYS` | `90` | audit log saqlash muddati, kamida 90 |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | parol URL'da bo'lmasin |
 | `REDIS_KEY_PREFIX` | bo'sh | umumiy dev Redis'da kalitlar aralashmasligi uchun |
 | `SESSION_IDLE_TIMEOUT_S`, `SESSION_ABSOLUTE_TIMEOUT_S` | `1800`, `43200` | sessiya: 30 daqiqa harakatsizlik, 12 soat jami |
@@ -125,6 +137,8 @@ Secret'lar production'da faqat systemd `LoadCredential=` orqali beriladi. Kodga,
 testga va repo'ga yozilmaydi. Ular:
 
 - `db_password` va `redis_password`;
+- `db_owner_password`: faqat `deploy.sh` migratsiyalar uchun o'qiydi, servisga
+  berilmaydi;
 - `totp_enc_key`: TOTP secret'larini AES-GCM bilan shifrlash kaliti;
 - `pinfl_hmac_key`: OneID'da PINFL bo'yicha qidirish kaliti;
 - keyingi bosqichlarda `jwt_private_key` va `oneid_client_secret`.
@@ -142,9 +156,37 @@ Fayllar `deploy/` papkasida:
 | `nginx/admin-frontend.conf` | frontend server bloki |
 | `nginx/admin-bff-internal.conf` | faqat `127.0.0.1`: JWKS va `/metrics` |
 | `nginx/admin-allowlist.conf` | IP allowlist (sukut bo'yicha hammasi yopiq) |
+| `admin-bff-audit-retention.service`, `.timer` | har kuni: eski audit partition'larini o'chirish va zanjirni tekshirish |
 | `deploy.sh` | `git pull`, `uv sync --frozen`, `alembic upgrade head`, `systemctl reload` |
 
 Birinchi o'rnatish tartibi `admin-bff.service` faylining boshida yozilgan.
+
+### PostgreSQL rollari
+
+Servis audit log'ni o'zgartira olmasligi uchun ikkita rol kerak (9-bo'lim):
+
+- `admin_bff_owner` sxema egasi. Migratsiyalar shu rol nomidan bajariladi.
+  Paroli `/etc/admin-bff/credentials/db_owner_password` faylida turadi va
+  faqat `deploy.sh`ga kerak.
+- `admin_bff` servisning o'zi. Audit jadvallarida faqat `SELECT` va `INSERT`
+  qila oladi.
+
+```sql
+CREATE ROLE admin_bff_owner LOGIN PASSWORD '...';
+CREATE ROLE admin_bff LOGIN PASSWORD '...';
+CREATE DATABASE admin_bff OWNER admin_bff_owner;
+-- Serverdagi boshqa tizimlarning rollari bu bazaga ulana olmasin:
+REVOKE CONNECT, TEMPORARY ON DATABASE admin_bff FROM PUBLIC;
+GRANT CONNECT ON DATABASE admin_bff TO admin_bff_owner, admin_bff;
+```
+
+`pg_hba.conf`: `local admin_bff admin_bff_owner,admin_bff scram-sha-256`.
+
+`alembic upgrade head` har safar `admin_bff` roliga huquqlarni qaytadan beradi
+(`app/core/db_privileges.py`). Yangi jadval avtomatik to'liq huquq oladi,
+ortiqcha berilgan huquq esa olib tashlanadi. Production'da servis ishga
+tushishda o'z huquqlarini tekshiradi. Agar u audit log'ni o'zgartira olsa
+(masalan, `DB_USER` owner yoki superuser bo'lsa), servis ishga tushmaydi.
 Yangilash:
 
 ```bash
@@ -161,9 +203,14 @@ uv run python -m app.cli sync-permissions                       # har deploy'da 
 uv run python -m app.cli unlock-login --username <login> [--ip <ip>]
 uv run python -m app.cli reencrypt-totp                          # TOTP_ENC_KEY rotatsiyasidan keyin
 uv run python -m app.cli reset-totp --username <login>           # yoki --all --yes (kalit yo'qolsa)
+uv run python -m app.cli verify-audit                            # audit hash zanjirini tekshirish
+uv run python -m app.cli audit-retention                         # har kuni (systemd timer)
 ```
+
+O'zgartiruvchi har bir buyruq audit'ga yoziladi: actor `cli`, buyruqni
+bajargan tizim foydalanuvchisi esa `details.os_user`da.
 
 Kalitlarni saqlash, zaxiralash va rotatsiya qilish tartibi:
 [`docs/security.md`](docs/security.md).
 
-Keyingi bosqichlarda qo'shiladi: `rotate-keys`, `verify-audit`.
+Keyingi bosqichda qo'shiladi: `rotate-keys`.

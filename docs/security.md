@@ -1,7 +1,7 @@
 # Xavfsizlik: qisqa threat model va qabul qilingan qarorlar
 
 Hujjat bosqichma-bosqich to'ldiriladi. Hozir unda autentifikatsiya (1-bosqich),
-avtorizatsiya (2-bosqich) va kalitlarni boshqarish bor.
+avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 
 ## Nimadan himoyalanamiz
 
@@ -14,6 +14,7 @@ avtorizatsiya (2-bosqich) va kalitlarni boshqarish bor.
 | CSRF | `Origin` aynan frontend bilan solishtiriladi, `X-CSRF-Token` sessiyadagi token bilan `compare_digest` orqali tekshiriladi |
 | DB yoki DB backup sizib chiqishi | Parol va recovery code Argon2id hash ko'rinishida. TOTP secret AES-256-GCM bilan shifrlangan, kalit DB'da emas. PINFL faqat HMAC hash sifatida saqlanadi |
 | Log orqali sizib chiqish | Parol, kod, token va cookie log'ga yozilmaydi. PII maskalanadi. Mavjud bo'lmagan login audit'ga ochiq yozilmaydi, chunki ba'zan unga parol kiritib yuboriladi |
+| Izni yashirish (audit yozuvini o'zgartirish yoki o'chirish) | Ilova roli audit'ga faqat qo'sha oladi. Trigger'lar UPDATE, DELETE va TRUNCATE'ni hamma uchun rad etadi. Hash zanjiri va journald'dagi nusxa qolgan o'zgarishlarni ko'rsatadi (pastda) |
 
 ## Avtorizatsiya (RBAC)
 
@@ -48,6 +49,95 @@ avtorizatsiya (2-bosqich) va kalitlarni boshqarish bor.
   shuning uchun hozir hammasiga `*` beriladi. Mexanizm baribir ishlaydi:
   - scope berilmagan admin hech narsani ko'rmaydi;
   - boshqa hudud ob'ekti so'ralsa, 403 emas, 404 qaytadi (BOLA'ga qarshi).
+
+## Audit log
+
+### Nima yoziladi
+
+- login urinishlari: muvaffaqiyatli, rad etilgan va bloklangan;
+- logout, step-up, TOTP ulash, parol almashtirish;
+- adminlar va rollardagi har bir o'zgarish, `before` va `after` bilan;
+- ruxsatsiz har bir urinish (`rbac.denied`, 403);
+- audit eksporti va zanjir tekshiruvi;
+- CLI buyruqlari: actor `cli`, `details.os_user`da buyruqni kim bajargani
+  (`sudo` bilan bo'lsa, `SUDO_USER`).
+
+Servis o'zi yozuv qoldirmagan so'rovlar uchun ham yozuv bor. Har bir POST,
+PUT, PATCH, DELETE va har bir 403 uchun `http.request` yoziladi. Unda metod,
+yo'l (query'siz), status va ma'lum bo'lsa admin bo'ladi. Shunda validatsiya
+xatosi, CSRF rad etishi va audit qilishni unutgan route ham izsiz qolmaydi.
+Istisno: sessiyasiz noma'lum manzilga kelgan so'rovlar (404, 405). Ular
+skanerlardan keladi va access log'da bor.
+
+Oddiy GET ro'yxatlar yozilmaydi (9-bo'lim).
+
+### Nega o'zgartirib bo'lmaydi
+
+Himoya to'rt qatlamdan iborat:
+
+1. **DB huquqlari.** Servis `admin_bff` roli bilan ishlaydi.
+   - Unda `audit_log` uchun faqat `SELECT` va `INSERT` bor. `id` ustuniga
+     INSERT huquqi ham yo'q, ya'ni id'ni ketma-ketlik beradi.
+   - `audit_anchors` uchun faqat `SELECT` bor.
+   - Partition'lar sxema egasi (`admin_bff_owner`) nomidan yaratiladi va
+     o'chiriladi. Buning uchun ikkita `SECURITY DEFINER` funksiya bor, ularda
+     cheklov qo'yilgan:
+     - partition faqat hozirgi vaqtdan ±13 oy ichida yaratiladi;
+     - o'chirish faqat 90 kundan eski butun oylar uchun ishlaydi.
+   - Production'da servis ishga tushishda o'z huquqlarini tekshiradi. Audit
+     jadvallarini o'zgartira olsa (owner, superuser yoki ortiqcha grant),
+     servis ishga tushmaydi.
+2. **Trigger'lar.** UPDATE, DELETE va TRUNCATE har qanday rol uchun xato
+   beradi, superuser va jadval egasi uchun ham. TRUNCATE trigger'i har bir
+   partition'da alohida turadi.
+3. **Hash zanjiri.** Har bir yozuv o'zidan oldingi yozuvga bog'langan:
+   `hash = sha256(prev_hash + canonical_json(yozuv))`.
+   - Yozuvlar `pg_advisory_xact_lock` ostida ketma-ket yoziladi.
+   - Yozuv vaqti zanjir bo'ylab kamaymaydi: server soati orqaga ketsa ham,
+     yangi yozuv oldingisining vaqtini oladi.
+   - `verify-audit` zanjirni har kuni tekshiradi (systemd timer). Bitta
+     yozuv o'zgartirilsa, o'chirilsa, orasiga qo'shilsa, vaqti orqaga surilsa
+     yoki id takrorlansa, u xato beradi.
+4. **Nusxa.** Har bir yozuv id va hash bilan `audit` logger'iga ham yoziladi
+   (journald). DB'ga yozib bo'lmasa, log'da `stored: false` yozuvi qoladi.
+
+### Qolgan xavflar
+
+| Holat | Nima qilinadi |
+| --- | --- |
+| Owner yoki superuser trigger'ni o'chirib, butun zanjirni qaytadan hisoblab yozadi | DB ichidan buni aniqlab bo'lmaydi. Faqat tashqi nusxa bilan solishtirib bilinadi. TODO(owner): journald yozuvlarini boshqa serverga (syslog yoki Loki) yuborish kerak |
+| Zanjir oxiridagi yozuvlar kesib tashlanadi | `verify-audit` buni ko'rmaydi. U oxirgi `id` va `hash`ni chiqaradi, ularni journald'dagi oxirgi `audit` yozuvi bilan solishtiring |
+| Ilova credential'lari bilan to'g'ri hash'li soxta yozuv qo'shiladi | Zanjir mavjud yozuvlarni himoya qiladi, yangi yozuvni emas. Ilova roli yozuvchi bo'lgani uchun bu cheklov tabiiy. Credential'lar faqat systemd orqali beriladi |
+| Amal bajarilgan, lekin audit yozuvi DB'ga tushmagan (masalan, DB shu orada uzilgan) | Amal va uning audit yozuvi bitta tranzaksiyada emas. Bunday holatda so'rov `500` bilan tugaydi va journald'da `stored: false` yozuvi qoladi |
+
+### Saqlash muddati
+
+- **Jadval.** `audit_log` oylar bo'yicha bo'lingan (`audit_log_yYYYYmMM`).
+- **Har kuni** soat 03:30 da `admin-bff-audit-retention.timer` ikki ishni
+  bajaradi:
+  - keyingi oy partition'ini oldindan yaratadi;
+  - to'liq 90 kundan (`AUDIT_RETENTION_DAYS`) eski oylarni o'chiradi.
+- **Anchor.** O'chirishdan oldin har bir oyning oxirgi yozuvi (id, vaqt va
+  hash) `audit_anchors`ga yoziladi. Keyin zanjir eng yangi anchor'dan
+  tekshiriladi.
+- **O'chirishning izi.** Har bir o'chirilgan partition audit'ga
+  `audit.partition.drop` bo'lib yoziladi.
+- **Chegara.** Funksiya 90 kundan kam muddatni qabul qilmaydi. Shuning
+  uchun ilova roli buzilgan taqdirda ham yangi yozuvlarni o'chira olmaydi.
+
+### Shaxsiy ma'lumotlar
+
+Audit'ga yozishdan oldin log'dagi qoidalar qo'llanadi:
+
+- `before`, `after`, `details`, `user_agent`, `reason` va `resource_id`
+  maydonlarida PINFL, telefon va pasport raqamlari maskalanadi. Istisno:
+  UUID ko'rinishidagi `resource_id`;
+- nomida `password`, `token`, `secret`, `otp` va shunga o'xshash so'z bor
+  kalitlarning qiymati `[REDACTED]` bo'ladi.
+
+Eksportda TOTP qayta so'raladi va soatiga ko'pi bilan 5 ta eksport mumkin.
+CSV fayldagi `=`, `+`, `-` yoki `@` bilan boshlanadigan katakning oldiga `'`
+qo'yiladi. Shunda Excel uni formula sifatida bajarmaydi (CSV injection).
 
 ## Kalitlar
 
