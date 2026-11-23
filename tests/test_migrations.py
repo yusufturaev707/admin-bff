@@ -6,7 +6,8 @@ from sqlalchemy import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-import app.auth.models  # noqa: F401  (registers the tables)
+import app.auth.models
+import app.rbac.models  # noqa: F401  (both register their tables)
 from app.core.db import Base, database_url
 from app.settings import Settings
 

@@ -81,7 +81,7 @@ class Services:
         """Empties the test database and this session's Redis keys."""
         conn = await self.pg_connect()
         try:
-            await conn.execute("TRUNCATE admin_users, recovery_codes CASCADE")
+            await conn.execute("TRUNCATE admin_users, recovery_codes, roles, permissions CASCADE")
         finally:
             await conn.close()
         redis = self.redis()
@@ -224,3 +224,26 @@ async def app(
 async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     async with app_client(app) as c:
         yield c
+
+
+@pytest.fixture
+def cli_env(
+    clean_env: pytest.MonkeyPatch, settings: Settings, services: Services
+) -> Iterator[Settings]:
+    """The CLI reads settings from the environment, like on a server."""
+    clean_env.setenv("APP_ENV", "test")
+    clean_env.setenv("LOG_FORMAT", "json")
+    clean_env.setenv("DB_HOST", services.db_host)
+    clean_env.setenv("DB_PORT", str(services.db_port))
+    clean_env.setenv("DB_USER", services.db_user)
+    clean_env.setenv("DB_NAME", services.db_name)
+    if services.db_password:
+        clean_env.setenv("DB_PASSWORD", services.db_password.get_secret_value())
+    clean_env.setenv("REDIS_URL", services.redis_url)
+    clean_env.setenv("REDIS_KEY_PREFIX", services.redis_prefix)
+    assert settings.totp_enc_key is not None
+    clean_env.setenv("TOTP_ENC_KEY", settings.totp_enc_key.get_secret_value())
+    for name in ("ARGON2_TIME_COST", "ARGON2_MEMORY_COST_KIB", "ARGON2_PARALLELISM"):
+        clean_env.setenv(name, str(getattr(settings, name.lower())))
+    yield settings
+    asyncio.run(services.reset())

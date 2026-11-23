@@ -4,7 +4,6 @@ import asyncio
 import base64
 import getpass
 import secrets
-from collections.abc import Iterator
 
 import pytest
 from sqlalchemy import select
@@ -21,29 +20,6 @@ from app.core.db import create_sessionmaker, database_url
 from app.settings import Settings
 from tests.auth_helpers import create_admin
 from tests.conftest import FakeClock, Services, random_key
-
-
-@pytest.fixture
-def cli_env(
-    clean_env: pytest.MonkeyPatch, settings: Settings, services: Services
-) -> Iterator[Settings]:
-    """The CLI reads settings from the environment, like on a server."""
-    clean_env.setenv("APP_ENV", "test")
-    clean_env.setenv("LOG_FORMAT", "json")
-    clean_env.setenv("DB_HOST", services.db_host)
-    clean_env.setenv("DB_PORT", str(services.db_port))
-    clean_env.setenv("DB_USER", services.db_user)
-    clean_env.setenv("DB_NAME", services.db_name)
-    if services.db_password:
-        clean_env.setenv("DB_PASSWORD", services.db_password.get_secret_value())
-    clean_env.setenv("REDIS_URL", services.redis_url)
-    clean_env.setenv("REDIS_KEY_PREFIX", services.redis_prefix)
-    assert settings.totp_enc_key is not None
-    clean_env.setenv("TOTP_ENC_KEY", settings.totp_enc_key.get_secret_value())
-    for name in ("ARGON2_TIME_COST", "ARGON2_MEMORY_COST_KIB", "ARGON2_PARALLELISM"):
-        clean_env.setenv(name, str(getattr(settings, name.lower())))
-    yield settings
-    asyncio.run(services.reset())
 
 
 def _passwords(monkeypatch: pytest.MonkeyPatch, *answers: str) -> None:

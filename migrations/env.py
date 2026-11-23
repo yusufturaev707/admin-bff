@@ -11,7 +11,8 @@ from alembic import context
 from sqlalchemy.engine import URL, Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-import app.auth.models  # noqa: F401  (registers the tables on Base.metadata)
+import app.auth.models
+import app.rbac.models  # noqa: F401  (both register their tables on Base.metadata)
 from app.core.db import Base, database_url
 from app.settings import load_settings
 
