@@ -1,7 +1,8 @@
 """Permission registry: every permission that exists, declared in code.
 
 The registry is the source of truth: the startup check refuses routes that
-require a permission missing from it.
+require a permission missing from it, and app.rbac.catalogue copies it to the
+`permissions` table at startup.
 """
 
 from collections.abc import Iterable, Iterator

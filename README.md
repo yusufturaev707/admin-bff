@@ -55,6 +55,11 @@ uv run uvicorn --factory app.main:create_app --reload --port 8000
 `git pull`dan keyin har safar `uv run alembic upgrade head` bajariladi: baza
 eskirgan bo'lsa, ilova ishga tushmaydi.
 
+`permissions` jadvalini ilova ishga tushishda o'zi yangilaydi: koddagi
+registry'ga (`app/rbac/permissions.py`) qarab yangi permission'larni qo'shadi,
+tavsiflarni yangilaydi, e'lon qilinmaganlarini o'chiradi. Rollarga berilgan
+huquqlarga (`role_permissions`) u tegmaydi.
+
 Birinchi superadmin faqat shu skript bilan yaratiladi, HTTP orqali yaratish
 yo'q (6-bo'lim). Parol terminalda ikki marta so'raladi, argument yoki
 environment orqali berilmaydi. Yangi admin birinchi kirishda parolini

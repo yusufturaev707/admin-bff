@@ -30,9 +30,8 @@ class Role(Base):
 
 
 class Permission(Base):
-    """Catalogue of declared permissions. The registry in code is the source of
-    truth; nothing copies it here since the CLI (`sync-permissions`) was
-    removed on 2026-11-23."""
+    """Catalogue of declared permissions: a copy of the registry in code (the
+    source of truth), refreshed at every startup by app.rbac.catalogue."""
 
     __tablename__ = "permissions"
 

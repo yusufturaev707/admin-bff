@@ -11,7 +11,7 @@ from functools import partial
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app import __version__
 from app.api import docs, health
@@ -40,6 +40,7 @@ from app.core.redis import create_redis, ping_redis
 from app.core.request_id import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.routes import validate_routes
 from app.core.time import Clock, utcnow
+from app.rbac.catalogue import sync_permission_table
 from app.rbac.principal import PrincipalLoader
 from app.rbac.registry import PermissionRegistry, build_registry
 from app.rbac.route_check import validate_access
@@ -116,6 +117,25 @@ async def check_database(engine: AsyncEngine, settings: Settings) -> None:
     logger.warning("audit_privileges_too_broad", problems=problems)
 
 
+async def sync_permission_catalogue(
+    db: async_sessionmaker[AsyncSession], registry: PermissionRegistry
+) -> None:
+    """Copies the registry to the `permissions` table (app.rbac.catalogue).
+    Nothing reads that copy at runtime, so a failure only warns."""
+    try:
+        changes = await sync_permission_table(db, registry)
+    except Exception as exc:
+        logger.warning("permission_catalogue_not_synced", error=type(exc).__name__)
+        return
+    if changes:
+        logger.info(
+            "permission_catalogue_synced",
+            added=changes.added,
+            updated=changes.updated,
+            removed=changes.removed,
+        )
+
+
 def require_explicit_operation_id(route: APIRoute) -> str:
     """operationIds are part of the frontend contract and must never change
     implicitly (e.g. when a function is renamed), so every route sets one."""
@@ -148,6 +168,7 @@ def _lifespan(
         try:
             await check_database(engine, settings)
             db = create_sessionmaker(engine)
+            await sync_permission_catalogue(db, registry)
             audit = DbAuditSink(
                 db, clock=clock, listeners=[MetricsAuditListener(), *audit_listeners]
             )
