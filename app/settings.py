@@ -109,6 +109,8 @@ class Settings(BaseSettings):
     totp_issuer: str = Field(default="UZBMB Admin", min_length=1, max_length=64)
 
     session_idle_timeout_s: int = Field(default=30 * 60, ge=60, le=24 * 3600)
+    # Requests per session per minute (section 11); over it: 429 rate_limited.
+    session_requests_per_minute: int = Field(default=300, ge=10, le=10_000)
     session_absolute_timeout_s: int = Field(default=12 * 3600, ge=300, le=7 * 24 * 3600)
 
     # Argon2id cost. Defaults are argon2-cffi's (RFC 9106 low-memory profile).

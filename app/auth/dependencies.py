@@ -21,6 +21,7 @@ from app.auth.service import AuthService, RequestMeta
 from app.auth.sessions import SessionData
 from app.core.errors import AppError, ErrorCode
 from app.core.guards import mark_guard
+from app.core.metrics import RATE_LIMITED
 from app.core.request_id import get_request_id
 from app.core.time import Clock
 
@@ -83,6 +84,11 @@ async def current_session(request: Request, service: AuthServiceDep) -> SessionD
         raise AppError(ErrorCode.SESSION_EXPIRED, headers={"Set-Cookie": _CLEAR_SESSION_COOKIE})
     # Known before the CSRF check: a rejected request is audited with its admin.
     set_audit_actor(session.user_id, session.username, session.key)
+    if service.request_limiter is not None:
+        retry_after = await service.request_limiter.hit(session.key)
+        if retry_after is not None:
+            RATE_LIMITED.labels(limit="session").inc()
+            raise AppError(ErrorCode.RATE_LIMITED, headers={"Retry-After": str(retry_after)})
     if request.method in UNSAFE_METHODS:
         token = request.headers.get(CSRF_HEADER, "")
         # Header values are latin-1 strings; bytes keep compare_digest total.

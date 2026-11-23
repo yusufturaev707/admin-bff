@@ -132,6 +132,7 @@ mavjud bo'lsa) `.env` umuman o'qilmaydi.
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | parol URL'da bo'lmasin |
 | `REDIS_KEY_PREFIX` | bo'sh | umumiy dev Redis'da kalitlar aralashmasligi uchun |
 | `SESSION_IDLE_TIMEOUT_S`, `SESSION_ABSOLUTE_TIMEOUT_S` | `1800`, `43200` | sessiya: 30 daqiqa harakatsizlik, 12 soat jami |
+| `SESSION_REQUESTS_PER_MINUTE` | `300` | bitta sessiyadan daqiqasiga so'rovlar soni, oshsa `429` |
 | `ARGON2_TIME_COST`, `ARGON2_MEMORY_COST_KIB`, `ARGON2_PARALLELISM` | `3`, `65536`, `4` | production'da kamida m=19 MiB, t=2 |
 | `TOTP_ISSUER` | `UZBMB Admin` | autentifikator ilovasida ko'rinadigan nom |
 | `ONEID_ENABLED` | `false` | OneID shablon, client hali yozilmagan (`app/auth/oneid.py`) |
@@ -153,7 +154,7 @@ Fayllar `deploy/` papkasida:
 | Fayl | Vazifasi |
 | --- | --- |
 | `admin-bff.service` | systemd unit (hardening, `LoadCredential=`, unix socket) |
-| `gunicorn.conf.py` | Gunicorn + UvicornWorker, `/run/admin-bff/bff.sock` |
+| `gunicorn.conf.py` | Gunicorn + `uvicorn_worker.UvicornWorker`, `/run/admin-bff/bff.sock`, Prometheus multiprocess fayllari |
 | `admin-bff.env.example` | `/etc/admin-bff/admin-bff.env` namunasi |
 | `nginx/admin-api.conf` | API server bloki: TLS, HSTS, rate limit, SSE, `/internal/` yopiq |
 | `nginx/admin-frontend.conf` | frontend server bloki |
@@ -163,6 +164,20 @@ Fayllar `deploy/` papkasida:
 | `deploy.sh` | `git pull`, `uv sync --frozen`, `alembic upgrade head`, `systemctl reload` |
 
 Birinchi o'rnatish tartibi `admin-bff.service` faylining boshida yozilgan.
+
+### Metrikalar
+
+Prometheus metrikalari `/metrics` manzilida. Ular tashqaridan yopiq, faqat
+serverning o'zidan ochiladi: `http://127.0.0.1:8081/metrics`
+(`nginx/admin-bff-internal.conf`). Ularda quyidagilar bor:
+
+- HTTP so'rovlar soni va davomiyligi, route shabloni bo'yicha;
+- muvaffaqiyatsiz login'lar va bloklanishlar;
+- rate limit'ga tushgan so'rovlar;
+- DB'ga yozilmay qolgan audit hodisalari.
+
+Tizimlar bo'yicha kechikish va circuit breaker metrikalari connector'lar
+bilan birga qo'shiladi (5-bosqich).
 
 ### PostgreSQL rollari
 

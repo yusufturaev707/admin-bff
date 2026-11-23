@@ -28,6 +28,7 @@ from app.auth.sessions import PendingStep, SessionData, SessionStore
 from app.auth.tickets import MfaTokenStore, OneTimeStore
 from app.core.errors import AppError, ErrorCode, field_error
 from app.core.logging import get_logger
+from app.core.ratelimit import FixedWindowLimiter
 from app.core.time import Clock
 from app.settings import Settings
 
@@ -105,6 +106,7 @@ class AuthService:
         limiter: LoginLimiter,
         audit: AuditSink,
         clock: Clock,
+        request_limiter: FixedWindowLimiter | None = None,
         oneid_client: OneIdClient | None = None,
     ) -> None:
         self._settings = settings
@@ -115,6 +117,8 @@ class AuthService:
         self._mfa_tokens = mfa_tokens
         self._one_time = one_time
         self.limiter = limiter
+        # Per-session request rate (section 11), checked by current_session.
+        self.request_limiter = request_limiter
         self._audit_sink = audit
         self._clock = clock
         self._oneid_client = oneid_client
@@ -556,5 +560,12 @@ def build_auth_service(
         limiter=LoginLimiter(redis, prefix=prefix),
         audit=audit,
         clock=clock,
+        request_limiter=FixedWindowLimiter(
+            redis,
+            prefix=prefix,
+            name="session_requests",
+            limit=settings.session_requests_per_minute,
+            window_s=60,
+        ),
         oneid_client=oneid_client,
     )
