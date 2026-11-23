@@ -124,10 +124,3 @@ def require_in_production(permission: str) -> Callable[..., Awaitable[None]]:
 
     dependency.__name__ = f"require_in_production[{checked}]"
     return mark_guard(dependency, [checked])
-
-
-def ensure_in_scope(principal: Principal, scope_type: str, value: str | None) -> None:
-    """Row-level check for detail endpoints (BOLA): an object outside the admin's
-    scope is reported as missing (404), so its existence is not disclosed."""
-    if not principal.in_scope(scope_type, value):
-        raise AppError(ErrorCode.NOT_FOUND)

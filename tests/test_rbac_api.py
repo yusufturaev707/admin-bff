@@ -91,7 +91,6 @@ async def test_role_created_by_superadmin_is_applied(
         {
             "username": "new_auditor",
             "role_ids": [role_id],
-            "scopes": [{"type": "region", "value": "*"}],
         },
     )
     assert created.status_code == 201
@@ -153,9 +152,8 @@ async def test_no_privilege_escalation(browsers: Any, settings: Settings, clock:
         settings,
         clock,
         ["admin:users:read", "admin:users:write", "admin:roles:read", "admin:roles:write"],
-        scopes=[("region", "10")],
     )
-    plain = await make_admin_with(settings, clock, [], scopes=[("region", "10")])
+    plain = await make_admin_with(settings, clock, [])
     me = await browsers(manager)
 
     def forbidden(response: httpx.Response) -> bool:
@@ -177,16 +175,9 @@ async def test_no_privilege_escalation(browsers: Any, settings: Settings, clock:
     assert ok.status_code == 201
 
     roles = {r["name"]: r["id"] for r in (await me.get(f"{ADMIN}/roles")).json()}
-    # Cannot hand out the superadmin role, nor wider scopes than its own.
+    # Cannot hand out the superadmin role.
     assert forbidden(
         await me.send("PUT", f"{ADMIN}/users/{plain.id}/roles", {"role_ids": [roles["superadmin"]]})
-    )
-    assert forbidden(
-        await me.send(
-            "PUT",
-            f"{ADMIN}/users/{plain.id}/scopes",
-            {"scopes": [{"type": "region", "value": "*"}]},
-        )
     )
     # Cannot change itself or anyone above it.
     assert forbidden(
@@ -238,7 +229,7 @@ async def test_role_rules(browsers: Any, settings: Settings, clock: FakeClock) -
     assert typo.json()["error"]["details"]["fields"][0]["type"] == "unknown_permission"
 
     used = await make_role(settings, ["admin:users:read"])
-    await grant(settings, (await create_admin(settings, clock)).id, [used], scopes=[])
+    await grant(settings, (await create_admin(settings, clock)).id, [used])
     assert (await boss.send("DELETE", f"{ADMIN}/roles/{used}")).status_code == 409
     unused = await make_role(settings, ["admin:users:read"])
     assert (await boss.send("DELETE", f"{ADMIN}/roles/{unused}")).status_code == 204
@@ -356,11 +347,7 @@ async def test_me(browsers: Any, settings: Settings, clock: FakeClock) -> None:
     assert body["username"] == superadmin.username
     assert body["permissions"] == ["*:*:*"]
     assert [r["name"] for r in body["roles"]] == ["superadmin"]
-    assert {(s["type"], s["value"]) for s in body["scopes"]} == {
-        ("region", "*"),
-        ("zone", "*"),
-        ("branch", "*"),
-    }
+    assert "scopes" not in body
     assert "totp_enabled" not in body
     assert uuid.UUID(body["id"])
 
@@ -394,18 +381,7 @@ async def test_editing_an_admin(browsers: Any, settings: Settings, clock: FakeCl
     assert only_password.status_code == 200
     assert only_password.json()["pinfl_masked"] is None
 
-    scoped = await boss.send(
-        "PUT",
-        f"{ADMIN}/users/{user_id}/scopes",
-        {"scopes": [{"type": "region", "value": "10"}, {"type": "zone", "value": "3"}]},
-    )
-    assert scoped.status_code == 200
-    assert {(s["type"], s["value"]) for s in scoped.json()["scopes"]} == {
-        ("region", "10"),
-        ("zone", "3"),
-    }
-    fetched = await boss.get(f"{ADMIN}/users/{user_id}")
-    assert fetched.json()["scopes"] == scoped.json()["scopes"]
+    assert (await boss.get(f"{ADMIN}/users/{user_id}")).json()["username"] == "citizen_only"
     assert (await boss.get(f"{ADMIN}/users/{uuid.uuid4()}")).status_code == 404
 
 

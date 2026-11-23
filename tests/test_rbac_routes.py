@@ -1,13 +1,10 @@
 """Deny-by-default: the startup refuses unprotected routes and unknown permissions."""
 
-from typing import Annotated
-
 import httpx
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
 
-from app.rbac.dependencies import ensure_in_scope, require, require_any
-from app.rbac.principal import Principal
+from app.rbac.dependencies import require, require_any
 from app.rbac.route_check import PUBLIC_PATHS
 from app.settings import Settings
 from tests.auth_helpers import create_admin, login
@@ -61,35 +58,6 @@ def test_public_list_is_the_spec() -> None:
         "/health",
         "/ready",
     } == PUBLIC_PATHS
-
-
-async def test_object_outside_the_scope_is_not_found(
-    app: FastAPI, settings: Settings, clock: FakeClock
-) -> None:
-    """BOLA (section 7): another region's object answers 404, not 403."""
-    router = APIRouter()
-
-    @router.get("/api/v1/_test/regions/{region_id}", operation_id="test_region_get")
-    async def region(
-        region_id: str, principal: Annotated[Principal, Depends(require("admin:users:read"))]
-    ) -> dict[str, str]:
-        ensure_in_scope(principal, "region", region_id)
-        return {"region": region_id}
-
-    app.include_router(router)
-    tashkent = await make_admin_with(
-        settings, clock, ["admin:users:read"], scopes=[("region", "10")]
-    )
-    no_scope = await make_admin_with(settings, clock, ["admin:users:read"], scopes=[])
-    async with app_client(app) as client:
-        await login(client, tashkent, clock)
-        assert (await client.get("/api/v1/_test/regions/10")).status_code == 200
-        other = await client.get("/api/v1/_test/regions/11")
-        assert other.status_code == 404
-        assert other.json()["error"]["code"] == "not_found"
-
-        await login(client, no_scope, clock)
-        assert (await client.get("/api/v1/_test/regions/10")).status_code == 404
 
 
 async def test_admin_without_roles_is_forbidden_everywhere(

@@ -28,9 +28,9 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
   faqat rol orqali adminga beriladi.
 - **Har bir rad etish audit'ga yoziladi** (`rbac.denied`).
 - **Huquqni oshirishdan himoya:**
-  - admin faqat o'zida bor permission va hududni bera oladi;
+  - admin faqat o'zida bor permission'ni bera oladi;
   - o'zidan yuqori huquqli adminni boshqara olmaydi;
-  - o'z rollarini, hududlarini, kirish usullarini va holatini o'zgartira
+  - o'z rollarini, kirish usullarini va holatini o'zgartira
     olmaydi;
   - o'zi a'zo bo'lgan rolni tahrirlay olmaydi.
 - **Superadmin.** `superadmin` tizim roli (`*:*:*`) faqat CLI orqali beriladi.
@@ -52,10 +52,8 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
     (`perm_version`).
   - Admin bloklansa, uning rollari, kirish usullari yoki paroli
     o'zgartirilsa: u adminning barcha sessiyalari tugaydi.
-- **Hududlar (scope).** Barcha adminlar bitta markaziy binoda ishlaydi,
-  shuning uchun hozir hammasiga `*` beriladi. Mexanizm baribir ishlaydi:
-  - scope berilmagan admin hech narsani ko'rmaydi;
-  - boshqa hudud ob'ekti so'ralsa, 403 emas, 404 qaytadi (BOLA'ga qarshi).
+- **Hududlar (scope) yo'q.** Egasining qarori bilan olib tashlandi
+  (migratsiya 0005): barcha adminlar bitta markaziy binoda ishlaydi.
 
 ## Audit log
 

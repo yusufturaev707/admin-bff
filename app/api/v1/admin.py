@@ -23,8 +23,6 @@ from app.rbac.schemas import (
     RoleRef,
     RolesUpdate,
     RoleUpdate,
-    Scope,
-    ScopesUpdate,
     UserCreate,
     UserCreated,
     UserOut,
@@ -71,7 +69,6 @@ def user_out(view: UserView) -> dict[str, Any]:
         "must_change_password": user.must_change_password,
         "pinfl_masked": user.pinfl_masked,
         "roles": [RoleRef(id=r.id, name=r.name) for r in view.roles],
-        "scopes": [Scope.model_validate({"type": t, "value": v}) for t, v in view.scopes],
         "created_at": user.created_at,
         "last_login_at": user.last_login_at,
     }
@@ -88,10 +85,6 @@ def role_out(view: RoleView) -> RoleOut:
         created_at=view.role.created_at,
         updated_at=view.role.updated_at,
     )
-
-
-def _scopes(items: list[Scope]) -> list[tuple[str, str]]:
-    return [(s.type.value, s.value) for s in items]
 
 
 # --- admins ------------------------------------------------------------------
@@ -144,7 +137,6 @@ async def create_user(
         methods=body.auth_methods,
         pinfl=body.pinfl,
         role_ids=body.role_ids,
-        scopes=_scopes(body.scopes),
     )
     return UserCreated(**user_out(view), initial_password=password)
 
@@ -191,23 +183,6 @@ async def set_roles(
     meta: RequestMetaDep,
 ) -> UserOut:
     return UserOut(**user_out(await service.set_roles(actor, meta, user_id, body.role_ids)))
-
-
-@router.put(
-    "/users/{user_id}/scopes",
-    operation_id="admin_user_scopes_update",
-    summary="Adminning hududlarini (scope) belgilash",
-    responses=_errors(401, 403, 404, 422),
-)
-async def set_scopes(
-    user_id: uuid.UUID,
-    body: ScopesUpdate,
-    actor: UsersWrite,
-    service: AdminServiceDep,
-    meta: RequestMetaDep,
-) -> UserOut:
-    view = await service.set_scopes(actor, meta, user_id, _scopes(body.scopes))
-    return UserOut(**user_out(view))
 
 
 @router.post(

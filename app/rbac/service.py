@@ -1,10 +1,10 @@
-"""Admins, roles and scopes (section 7).
+"""Admins and roles (section 7).
 
 Rules against privilege escalation, enforced for every change:
 
-* an admin can only grant permissions (roles) and scopes it holds itself;
+* an admin can only grant permissions (roles) it holds itself;
 * an admin cannot manage an admin who holds more than it does;
-* an admin cannot change its own roles, scopes, sign-in methods or status;
+* an admin cannot change its own roles, sign-in methods or status;
 * the system role `superadmin` cannot be edited or deleted, and the last active
   superadmin cannot be demoted or blocked.
 
@@ -33,7 +33,7 @@ from app.auth.sessions import SessionStore
 from app.core.errors import AppError, ErrorCode, field_error
 from app.core.pagination import PageParams
 from app.core.pii import mask_pinfl
-from app.rbac.models import SUPERADMIN_ROLE, Role, RolePermission, UserRole, UserScope
+from app.rbac.models import SUPERADMIN_ROLE, Role, RolePermission, UserRole
 from app.rbac.permissions import is_valid_pattern
 from app.rbac.principal import Principal, PrincipalLoader
 from app.rbac.registry import PermissionRegistry
@@ -57,7 +57,6 @@ _SORT_COLUMNS = {
 class UserView:
     user: AdminUser
     roles: list[Role]
-    scopes: list[tuple[str, str]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,14 +172,6 @@ class AdminService:
         )
         return set(rows.all())
 
-    async def _user_scopes(self, db: AsyncSession, user_id: uuid.UUID) -> list[tuple[str, str]]:
-        rows = await db.execute(
-            select(UserScope.scope_type, UserScope.scope_value)
-            .where(UserScope.user_id == user_id)
-            .order_by(UserScope.scope_type, UserScope.scope_value)
-        )
-        return [(t, v) for t, v in rows.all()]
-
     async def _active_superadmins(self, db: AsyncSession) -> set[uuid.UUID]:
         rows = await db.scalars(
             select(UserRole.user_id)
@@ -217,11 +208,6 @@ class AdminService:
         if not actor.covers_all(patterns):
             raise AppError(ErrorCode.FORBIDDEN, FORBIDDEN_GRANT)
 
-    @staticmethod
-    def _ensure_scopes(actor: Principal, scopes: Iterable[tuple[str, str]]) -> None:
-        if not all(actor.covers_scope(t, v) for t, v in scopes):
-            raise AppError(ErrorCode.FORBIDDEN, FORBIDDEN_GRANT)
-
     async def _ensure_can_manage(
         self, db: AsyncSession, actor: Principal, target: AdminUser
     ) -> None:
@@ -229,13 +215,10 @@ class AdminService:
             raise AppError(ErrorCode.FORBIDDEN, FORBIDDEN_SELF)
         if not actor.covers_all(await self._user_patterns(db, target.id)):
             raise AppError(ErrorCode.FORBIDDEN, FORBIDDEN_HIGHER)
-        if not all(actor.covers_scope(t, v) for t, v in await self._user_scopes(db, target.id)):
-            raise AppError(ErrorCode.FORBIDDEN, FORBIDDEN_HIGHER)
 
     async def _views(self, db: AsyncSession, users: Sequence[AdminUser]) -> list[UserView]:
         ids = [u.id for u in users]
         roles: dict[uuid.UUID, list[Role]] = {i: [] for i in ids}
-        scopes: dict[uuid.UUID, list[tuple[str, str]]] = {i: [] for i in ids}
         if ids:
             role_rows = await db.execute(
                 select(UserRole.user_id, Role)
@@ -245,14 +228,7 @@ class AdminService:
             )
             for user_id, role in role_rows.all():
                 roles[user_id].append(role)
-            scope_rows = await db.execute(
-                select(UserScope.user_id, UserScope.scope_type, UserScope.scope_value)
-                .where(UserScope.user_id.in_(ids))
-                .order_by(UserScope.scope_type, UserScope.scope_value)
-            )
-            for user_id, scope_type, scope_value in scope_rows.all():
-                scopes[user_id].append((scope_type, scope_value))
-        return [UserView(u, roles[u.id], scopes[u.id]) for u in users]
+        return [UserView(u, roles[u.id]) for u in users]
 
     async def _view(self, user_id: uuid.UUID) -> UserView:
         async with self._db() as db:
@@ -308,7 +284,6 @@ class AdminService:
         methods: Sequence[AuthMethod],
         pinfl: str | None,
         role_ids: Sequence[uuid.UUID],
-        scopes: Sequence[tuple[str, str]],
     ) -> tuple[UserView, str | None]:
         normalized = normalize_username(username)
         if normalized is None:
@@ -320,7 +295,6 @@ class AdminService:
         method_values = sorted({m.value for m in methods})
         if AuthMethod.ONEID.value in method_values and pinfl is None:
             raise field_error(("body", "pinfl"), "pinfl_required", "OneID uchun PINFL kerak")
-        self._ensure_scopes(actor, scopes)
         password = (
             self._new_password(normalized) if AuthMethod.PASSWORD.value in method_values else None
         )
@@ -341,9 +315,6 @@ class AdminService:
                 db.add(user)
                 await db.flush()
                 db.add_all(UserRole(user_id=user.id, role_id=r.id) for r in roles)
-                db.add_all(
-                    UserScope(user_id=user.id, scope_type=t, scope_value=v) for t, v in set(scopes)
-                )
         except IntegrityError as exc:
             raise AppError(
                 ErrorCode.CONFLICT, "Bunday login yoki PINFL bilan admin allaqachon bor"
@@ -359,7 +330,6 @@ class AdminService:
                 "full_name": full_name,
                 "auth_methods": method_values,
                 "roles": sorted(r.name for r in roles),
-                "scopes": sorted(f"{t}:{v}" for t, v in set(scopes)),
                 "pinfl_masked": user.pinfl_masked,
             },
         )
@@ -466,34 +436,6 @@ class AdminService:
             resource_id=user_id,
             before=before,
             after=sorted(r.name for r in roles),
-        )
-        return await self._view(user_id)
-
-    async def set_scopes(
-        self,
-        actor: Principal,
-        meta: RequestMeta,
-        user_id: uuid.UUID,
-        scopes: Sequence[tuple[str, str]],
-    ) -> UserView:
-        wanted = sorted(set(scopes))
-        self._ensure_scopes(actor, wanted)
-        async with self._db() as db, db.begin():
-            user = await self._user_or_404(db, user_id)
-            await self._ensure_can_manage(db, actor, user)
-            before = await self._user_scopes(db, user.id)
-            await db.execute(delete(UserScope).where(UserScope.user_id == user.id))
-            db.add_all(UserScope(user_id=user.id, scope_type=t, scope_value=v) for t, v in wanted)
-            versions = await self._loader.bump(db, [user.id])
-        await self._after_change(versions)
-        await self._audit(
-            "admin.user.scopes",
-            actor,
-            meta,
-            resource="users",
-            resource_id=user_id,
-            before=[f"{t}:{v}" for t, v in before],
-            after=[f"{t}:{v}" for t, v in wanted],
         )
         return await self._view(user_id)
 

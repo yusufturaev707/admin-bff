@@ -63,13 +63,11 @@ async def test_every_write_request_is_audited(
             "username": "operator_1",
             "auth_methods": ["password"],
             "role_ids": [role_id],
-            "scopes": [{"type": "region", "value": "*"}],
         },
     )
     user_id = user.json()["id"]
     await call("PATCH", f"{ADMIN}/users/{user_id}", json={"full_name": "Aliyev Vali"})
     await call("PUT", f"{ADMIN}/users/{user_id}/roles", json={"role_ids": []})
-    await call("PUT", f"{ADMIN}/users/{user_id}/scopes", json={"scopes": []})
     await call("POST", f"{ADMIN}/users/{user_id}/reset-password")
     await call("POST", f"{ADMIN}/users/{user_id}/unlock")
     await call("DELETE", f"{ADMIN}/roles/{role_id}")
@@ -80,7 +78,7 @@ async def test_every_write_request_is_audited(
     await call("POST", f"{AUTH}/logout")
 
     assert [r.status_code for r in writes] == [
-        201, 200, 201, 200, 200, 200, 200, 204, 204, 422, 404, 422, 204
+        201, 200, 201, 200, 200, 200, 204, 204, 422, 404, 422, 204
     ]  # fmt: skip
     for response in writes:
         found = await records(settings, request_id=_request_id(response))
@@ -109,7 +107,6 @@ async def test_changes_are_audited_with_before_and_after(
             "auth_methods": ["password", "oneid"],
             "pinfl": "31201234560045",
             "role_ids": [role.json()["id"]],
-            "scopes": [],
         },
         headers=h,
     )

@@ -82,23 +82,8 @@ def test_principal_checks() -> None:
         username="op",
         full_name=None,
         permissions=frozenset({"faceid:*:read", "admin:users:read"}),
-        scopes={"region": frozenset({"10", "11"})},
     )
     assert principal.has("faceid:students:read")
     assert not principal.has("faceid:students:write")
     assert principal.covers("faceid:cameras:read")
     assert not principal.covers("faceid:*:*")
-    assert principal.in_scope("region", "10")
-    assert not principal.in_scope("region", "12")
-    assert not principal.in_scope("zone", "1")  # no scope of a type: nothing visible
-    assert principal.regions() == ["10", "11"]
-
-    everywhere = Principal(
-        user_id=uuid.uuid4(),
-        username="boss",
-        full_name=None,
-        permissions=frozenset({"*:*:*"}),
-        scopes={"region": frozenset({"*"})},
-    )
-    assert everywhere.in_scope("region", "99")
-    assert everywhere.regions() == ["*"]

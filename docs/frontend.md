@@ -145,7 +145,6 @@ qarab quradi:
   "full_name": "Aliyev Vali",
   "roles": [{"id": "...", "name": "auditor"}],
   "permissions": ["admin:users:read", "faceid:*:read"],
-  "scopes": [{"type": "region", "value": "*"}],
   "must_change_password": false
 }
 ```
@@ -166,7 +165,7 @@ qarab quradi:
 | --- | --- |
 | `GET /admin/users`, `GET /admin/users/{id}` | `admin:users:read` |
 | `POST /admin/users`, `PATCH /admin/users/{id}` | `admin:users:write` |
-| `PUT /admin/users/{id}/roles`, `PUT /admin/users/{id}/scopes` | `admin:users:write` |
+| `PUT /admin/users/{id}/roles` | `admin:users:write` |
 | `POST /admin/users/{id}/reset-password`, `.../unlock` | `admin:users:security` |
 | `GET /admin/roles`, `GET /admin/roles/{id}`, `GET /admin/permissions` | `admin:roles:read` |
 | `POST /admin/roles`, `PATCH /admin/roles/{id}`, `DELETE /admin/roles/{id}` | `admin:roles:write` |
@@ -178,8 +177,8 @@ qarab quradi:
   permission'lar tizimlar bo'yicha guruhlangan va har birining o'zbekcha
   tavsifi bor.
 - **Rad etiladigan holatlar (`403`):**
-  - admin o'zida yo'q permission yoki hududni boshqaga bera olmaydi;
-  - o'z rollarini, hududlarini, kirish usullarini va holatini o'zgartira
+  - admin o'zida yo'q permission'ni boshqaga bera olmaydi;
+  - o'z rollarini, kirish usullarini va holatini o'zgartira
     olmaydi;
   - o'zidan yuqori huquqli adminni boshqara olmaydi.
 - **`409 conflict` holatlari:**

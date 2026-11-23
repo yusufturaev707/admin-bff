@@ -278,7 +278,7 @@ Har bir endpoint aniq bir permission talab qiladi. Permission'siz route topilsa,
 - Wildcard faqat adminga berilgan permission'larda ishlatiladi: `faceid:*:read`, `faceid:*:*`, `*:*:*`. Endpoint talab qiladigan permission'da wildcard bo'lmaydi.
 - **Registry.** Har bir connector permission'larini `permissions.py`'da e'lon qiladi. Yadroning o'z permission'lari ham bor: `admin:*`, `audit:*`. `sync-permissions` buyrug'i ularni DB bilan sinxronlaydi. Agar `require()` ichida e'lon qilinmagan permission ishlatilsa, startup xato beradi.
 
-**Admin DB jadvallari:** `admin_users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `user_scopes` (`scope_type`: region, zone yoki branch, va `scope_value`), `recovery_codes`, `audit_log`, `pending_actions`.
+**Admin DB jadvallari:** `admin_users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `audit_log`, `pending_actions`.
 
 **Principal** joriy admin haqidagi ma'lumot: `user_id`, `username`, `permissions` (frozenset), `scopes`, `session_id`.
 
@@ -290,11 +290,7 @@ Har bir endpoint aniq bir permission talab qiladi. Permission'siz route topilsa,
 - Ishga tushishda barcha `APIRoute`'lar tekshiriladi. `require*` dependency'si yo'q va public ro'yxatda ham bo'lmagan route topilsa, `RuntimeError` ko'tariladi. Bu holat test bilan ham tekshiriladi.
 - Public ro'yxat: `/api/v1/auth/login`, `/api/v1/auth/oneid/start`, `/api/v1/auth/oneid/callback`, `/health`, `/ready`.
 
-**Row-level tekshiruv (BOLA'ga qarshi):**
-
-- Ro'yxat endpoint'larida adminning scope'i tizimga JWT'dagi `regions` claim'i orqali yuboriladi. BFF ham qaytgan natijani tekshiradi.
-- Detail endpoint'larida ob'ekt admin scope'idan tashqarida bo'lsa, 404 qaytariladi. 403 emas, chunki ob'ekt mavjudligi oshkor bo'lmasligi kerak.
-- Scope berilmagan admin hech narsani ko'rmaydi. Barcha hududlarga ruxsat faqat maxsus `*` scope aniq berilganda bo'ladi.
+**Row-level tekshiruv:** egasining qarori (2026-11-23) bilan admin scope'lari (`user_scopes`, region/zone/branch) olib tashlandi (migratsiya 0005). Barcha adminlar bitta markaziy binoda ishlaydi; hududiy cheklov kerak bo'lsa, qaytadan loyihalanadi.
 
 **Step-up:** TOTP bilan birga olib tashlandi (6-bo'lim, egasining qarori). Xavfli amallar oldidan qayta tasdiq so'ralmaydi. `ActionSpec.dangerous=True` hozircha `reason` majburiyligini bildiradi. Qayta tasdiq kerak bo'lsa (masalan, parolni qayta kiritish), egasi bilan kelishiladi.
 

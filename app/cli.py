@@ -3,7 +3,7 @@
 Commands:
     export-openapi     writes the OpenAPI snapshot (openapi/v1.json); with --check
                        only compares and exits with 1 if the snapshot is outdated.
-    create-superadmin  creates a superadmin (role `superadmin`, every scope); the
+    create-superadmin  creates a superadmin (role `superadmin`); the
                        password is asked interactively. --existing promotes an
                        existing admin. There is no HTTP endpoint for this.
     sync-permissions   copies the permission registry to the DB (after deploy).
@@ -44,14 +44,11 @@ from app.core.db import create_engine, create_sessionmaker
 from app.core.redis import create_redis
 from app.core.time import utcnow
 from app.rbac.models import (
-    SCOPE_ALL,
     SUPERADMIN_ROLE,
     Permission,
     Role,
     RolePermission,
-    ScopeType,
     UserRole,
-    UserScope,
 )
 from app.rbac.permissions import ALL_PERMISSIONS
 from app.rbac.registry import build_registry
@@ -158,15 +155,6 @@ async def _grant_superadmin(db: AsyncSession, user: AdminUser) -> None:
         select(UserRole.user_id).where(UserRole.user_id == user.id, UserRole.role_id == role.id)
     ):
         db.add(UserRole(user_id=user.id, role_id=role.id))
-    for scope_type in ScopeType:
-        if not await db.scalar(
-            select(UserScope.user_id).where(
-                UserScope.user_id == user.id,
-                UserScope.scope_type == scope_type.value,
-                UserScope.scope_value == SCOPE_ALL,
-            )
-        ):
-            db.add(UserScope(user_id=user.id, scope_type=scope_type.value, scope_value=SCOPE_ALL))
     user.perm_version += 1
 
 
@@ -243,7 +231,7 @@ async def create_superadmin(username_raw: str, *, existing: bool = False) -> int
     finally:
         await engine.dispose()
     if existing:
-        _out(f"'{username}' superadmin qilindi (barcha huquqlar va hududlar).")
+        _out(f"'{username}' superadmin qilindi (barcha huquqlar).")
     else:
         _out(f"Superadmin '{username}' yaratildi. Birinchi kirishda parol almashtiriladi.")
     return 0

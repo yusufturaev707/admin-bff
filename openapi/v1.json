@@ -1066,99 +1066,6 @@
         "description": "**Permission:** `admin:users:write`"
       }
     },
-    "/api/v1/admin/users/{user_id}/scopes": {
-      "put": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "Adminning hududlarini (scope) belgilash",
-        "operationId": "admin_user_scopes_update",
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "User Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ScopesUpdate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserOut"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "session": [],
-            "csrf": []
-          }
-        ],
-        "x-permissions": [
-          "admin:users:write"
-        ],
-        "description": "**Permission:** `admin:users:write`"
-      }
-    },
     "/api/v1/admin/users/{user_id}/reset-password": {
       "post": {
         "tags": [
@@ -2690,13 +2597,6 @@
             "type": "array",
             "title": "Permissions",
             "description": "Berilgan permission'lar, wildcard bo'lishi mumkin"
-          },
-          "scopes": {
-            "items": {
-              "$ref": "#/components/schemas/Scope"
-            },
-            "type": "array",
-            "title": "Scopes"
           }
         },
         "type": "object",
@@ -2707,8 +2607,7 @@
           "auth_methods",
           "must_change_password",
           "roles",
-          "permissions",
-          "scopes"
+          "permissions"
         ],
         "title": "MeOut",
         "description": "The current admin: the frontend builds its menu from `permissions`."
@@ -3063,56 +2962,6 @@
         ],
         "title": "RolesUpdate"
       },
-      "Scope": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ScopeType"
-          },
-          "value": {
-            "type": "string",
-            "pattern": "^(\\*|[A-Za-z0-9_-]{1,64})$",
-            "title": "Value",
-            "description": "`*` barcha qiymatlar"
-          }
-        },
-        "type": "object",
-        "required": [
-          "type",
-          "value"
-        ],
-        "title": "Scope",
-        "example": {
-          "type": "region",
-          "value": "*"
-        }
-      },
-      "ScopeType": {
-        "type": "string",
-        "enum": [
-          "region",
-          "zone",
-          "branch"
-        ],
-        "title": "ScopeType"
-      },
-      "ScopesUpdate": {
-        "properties": {
-          "scopes": {
-            "items": {
-              "$ref": "#/components/schemas/Scope"
-            },
-            "type": "array",
-            "maxItems": 200,
-            "title": "Scopes"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "scopes"
-        ],
-        "title": "ScopesUpdate"
-      },
       "SessionInfo": {
         "properties": {
           "id": {
@@ -3330,14 +3179,6 @@
             "type": "array",
             "maxItems": 50,
             "title": "Role Ids"
-          },
-          "scopes": {
-            "items": {
-              "$ref": "#/components/schemas/Scope"
-            },
-            "type": "array",
-            "maxItems": 200,
-            "title": "Scopes"
           }
         },
         "additionalProperties": false,
@@ -3352,12 +3193,6 @@
           ],
           "full_name": "Aliyev Vali",
           "role_ids": [],
-          "scopes": [
-            {
-              "type": "region",
-              "value": "*"
-            }
-          ],
           "username": "operator_toshkent"
         }
       },
@@ -3416,13 +3251,6 @@
             "type": "array",
             "title": "Roles"
           },
-          "scopes": {
-            "items": {
-              "$ref": "#/components/schemas/Scope"
-            },
-            "type": "array",
-            "title": "Scopes"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -3463,7 +3291,6 @@
           "must_change_password",
           "pinfl_masked",
           "roles",
-          "scopes",
           "created_at",
           "last_login_at",
           "initial_password"
@@ -3525,13 +3352,6 @@
             "type": "array",
             "title": "Roles"
           },
-          "scopes": {
-            "items": {
-              "$ref": "#/components/schemas/Scope"
-            },
-            "type": "array",
-            "title": "Scopes"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -3560,7 +3380,6 @@
           "must_change_password",
           "pinfl_masked",
           "roles",
-          "scopes",
           "created_at",
           "last_login_at"
         ],
@@ -3679,13 +3498,6 @@
             "type": "array",
             "title": "Roles"
           },
-          "scopes": {
-            "items": {
-              "$ref": "#/components/schemas/Scope"
-            },
-            "type": "array",
-            "title": "Scopes"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -3726,7 +3538,6 @@
           "must_change_password",
           "pinfl_masked",
           "roles",
-          "scopes",
           "created_at",
           "last_login_at"
         ],

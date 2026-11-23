@@ -8,12 +8,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.db import create_sessionmaker, database_url
-from app.rbac.models import SUPERADMIN_ROLE, Role, RolePermission, UserRole, UserScope
+from app.rbac.models import SUPERADMIN_ROLE, Role, RolePermission, UserRole
 from app.settings import Settings
 from tests.auth_helpers import Admin, create_admin
 from tests.conftest import FakeClock
-
-ALL_SCOPES: tuple[tuple[str, str], ...] = (("region", "*"), ("zone", "*"), ("branch", "*"))
 
 
 async def _write(settings: Settings, *objects: object) -> None:
@@ -46,13 +44,8 @@ async def grant(
     settings: Settings,
     user_id: uuid.UUID,
     role_ids: Sequence[uuid.UUID],
-    scopes: Sequence[tuple[str, str]] = ALL_SCOPES,
 ) -> None:
-    await _write(
-        settings,
-        *(UserRole(user_id=user_id, role_id=r) for r in role_ids),
-        *(UserScope(user_id=user_id, scope_type=t, scope_value=v) for t, v in scopes),
-    )
+    await _write(settings, *(UserRole(user_id=user_id, role_id=r) for r in role_ids))
 
 
 async def make_superadmin(settings: Settings, clock: FakeClock) -> Admin:
@@ -66,11 +59,8 @@ async def make_admin_with(
     settings: Settings,
     clock: FakeClock,
     permissions: Sequence[str],
-    scopes: Sequence[tuple[str, str]] = ALL_SCOPES,
 ) -> Admin:
     admin = await create_admin(settings, clock)
     if permissions:
-        await grant(settings, admin.id, [await make_role(settings, permissions)], scopes)
-    elif scopes:
-        await grant(settings, admin.id, [], scopes)
+        await grant(settings, admin.id, [await make_role(settings, permissions)])
     return admin

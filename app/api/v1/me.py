@@ -26,5 +26,4 @@ async def me(principal: PrincipalDep, service: AdminServiceDep) -> MeOut:
         must_change_password=data["must_change_password"],
         roles=data["roles"],
         permissions=sorted(principal.permissions),
-        scopes=data["scopes"],
     )

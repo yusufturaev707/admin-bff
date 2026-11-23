@@ -1,8 +1,7 @@
-"""RBAC tables (section 7): roles, permissions, role_permissions, user_roles, user_scopes."""
+"""RBAC tables (section 7): roles, permissions, role_permissions, user_roles."""
 
 import uuid
 from datetime import datetime
-from enum import StrEnum
 
 from sqlalchemy import CheckConstraint, ForeignKey, String, Text, false, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -13,15 +12,6 @@ SUPERADMIN_ROLE = "superadmin"
 
 # Mirrors app.rbac.permissions.PATTERN_RE, so the DB itself refuses garbage.
 _PATTERN_SQL = r"permission ~ '^(\*|[a-z][a-z0-9_]*):(\*|[a-z][a-z0-9_]*):(\*|[a-z][a-z0-9_]*)$'"
-
-
-class ScopeType(StrEnum):
-    REGION = "region"
-    ZONE = "zone"
-    BRANCH = "branch"
-
-
-SCOPE_ALL = "*"  # every value of a scope type ("all regions")
 
 
 class Role(Base):
@@ -71,16 +61,3 @@ class UserRole(Base):
         ForeignKey("roles.id", ondelete="RESTRICT"), primary_key=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class UserScope(Base):
-    __tablename__ = "user_scopes"
-    __table_args__ = (
-        CheckConstraint("scope_type IN ('region', 'zone', 'branch')", name="scope_type_valid"),
-    )
-
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("admin_users.id", ondelete="CASCADE"), primary_key=True
-    )
-    scope_type: Mapped[str] = mapped_column(String(16), primary_key=True)
-    scope_value: Mapped[str] = mapped_column(String(64), primary_key=True)

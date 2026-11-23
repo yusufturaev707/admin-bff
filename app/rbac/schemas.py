@@ -7,9 +7,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth.models import AuthMethod
-from app.rbac.models import ScopeType
-
-_SCOPE_VALUE = r"^(\*|[A-Za-z0-9_-]{1,64})$"
 
 
 class _Request(BaseModel):
@@ -21,13 +18,6 @@ class RoleRef(BaseModel):
     name: str
 
 
-class Scope(BaseModel):
-    model_config = ConfigDict(json_schema_extra={"example": {"type": "region", "value": "*"}})
-
-    type: ScopeType
-    value: str = Field(pattern=_SCOPE_VALUE, description="`*` barcha qiymatlar")
-
-
 class UserOut(BaseModel):
     id: uuid.UUID
     username: str
@@ -37,7 +27,6 @@ class UserOut(BaseModel):
     must_change_password: bool
     pinfl_masked: str | None
     roles: list[RoleRef]
-    scopes: list[Scope]
     created_at: datetime
     last_login_at: datetime | None
 
@@ -56,7 +45,6 @@ class UserCreate(_Request):
                 "full_name": "Aliyev Vali",
                 "auth_methods": ["password"],
                 "role_ids": [],
-                "scopes": [{"type": "region", "value": "*"}],
             }
         }
     )
@@ -66,7 +54,6 @@ class UserCreate(_Request):
     auth_methods: list[AuthMethod] = Field(default=[AuthMethod.PASSWORD], min_length=1)
     pinfl: str | None = Field(default=None, pattern=r"^[0-9]{14}$")
     role_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
-    scopes: list[Scope] = Field(default_factory=list, max_length=200)
 
 
 class UserUpdate(_Request):
@@ -86,10 +73,6 @@ class UserUpdated(UserOut):
 
 class RolesUpdate(_Request):
     role_ids: list[uuid.UUID] = Field(max_length=50)
-
-
-class ScopesUpdate(_Request):
-    scopes: list[Scope] = Field(max_length=200)
 
 
 class PasswordReset(BaseModel):
@@ -154,7 +137,6 @@ class MeOut(BaseModel):
     must_change_password: bool
     roles: list[RoleRef]
     permissions: list[str] = Field(description="Berilgan permission'lar, wildcard bo'lishi mumkin")
-    scopes: list[Scope]
 
 
 UserSort = Literal[

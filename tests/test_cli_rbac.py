@@ -12,7 +12,7 @@ from sqlalchemy.pool import NullPool
 
 from app import cli
 from app.core.db import create_sessionmaker, database_url
-from app.rbac.models import Permission, Role, RolePermission, UserRole, UserScope
+from app.rbac.models import Permission, Role, RolePermission, UserRole
 from app.rbac.registry import build_registry
 from app.settings import Settings
 from tests.auth_helpers import create_admin
@@ -64,9 +64,7 @@ async def _seed_obsolete(settings: Settings, role_id: object) -> None:
         await engine.dispose()
 
 
-def test_create_superadmin_gets_the_role_and_every_scope(
-    cli_env: Settings, clean_env: pytest.MonkeyPatch
-) -> None:
+def test_create_superadmin_gets_the_role(cli_env: Settings, clean_env: pytest.MonkeyPatch) -> None:
     password = secrets.token_urlsafe(18)
     replies = iter([password, password])
     clean_env.setattr(getpass, "getpass", lambda prompt="": next(replies))
@@ -81,8 +79,6 @@ def test_create_superadmin_gets_the_role_and_every_scope(
         )
     )
     assert roles == [("superadmin", "*:*:*")]
-    scopes = asyncio.run(_query(cli_env, select(UserScope.scope_type, UserScope.scope_value)))
-    assert sorted(scopes) == [("branch", "*"), ("region", "*"), ("zone", "*")]
 
 
 def test_promote_an_existing_admin(cli_env: Settings, clock: FakeClock) -> None:

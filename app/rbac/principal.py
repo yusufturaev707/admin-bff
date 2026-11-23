@@ -1,7 +1,7 @@
 """Principal: who the current admin is and what they may do (section 7).
 
 Loaded from the DB once and cached in Redis under the admin's `perm_version`:
-`principal:<user_id>:<perm_version>`. Changing an admin's roles or scopes, or
+`principal:<user_id>:<perm_version>`. Changing an admin's roles, or
 the permissions of a role, bumps `perm_version` in the DB (`bump`, inside the
 transaction) and then in Redis (`publish`, after the commit), so the very next
 request loads a fresh principal. The Redis version only ever grows: a request
@@ -10,8 +10,8 @@ that read old data concurrently cannot move it back.
 
 import json
 import uuid
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field, replace
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
 
 from redis.asyncio import Redis
 from sqlalchemy import select, update
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.auth.models import AdminUser
 from app.auth.sessions import SessionData
-from app.rbac.models import SCOPE_ALL, RolePermission, UserRole, UserScope
+from app.rbac.models import RolePermission, UserRole
 from app.rbac.permissions import any_covers, pattern_matches
 
 PRINCIPAL_TTL_S = 5 * 60
@@ -42,7 +42,6 @@ class Principal:
     username: str
     full_name: str | None
     permissions: frozenset[str]  # granted patterns (exact codes or wildcards)
-    scopes: Mapping[str, frozenset[str]] = field(default_factory=dict)
     perm_version: int = 0
     session_key: str = ""
 
@@ -56,28 +55,12 @@ class Principal:
     def covers_all(self, patterns: Iterable[str]) -> bool:
         return all(self.covers(p) for p in patterns)
 
-    def in_scope(self, scope_type: str, value: str | None) -> bool:
-        """Row-level check. No scope of that type means nothing is visible."""
-        values = self.scopes.get(scope_type, frozenset())
-        return SCOPE_ALL in values or (value is not None and value in values)
-
-    def covers_scope(self, scope_type: str, value: str) -> bool:
-        """May hand out this scope to another admin."""
-        values = self.scopes.get(scope_type, frozenset())
-        return SCOPE_ALL in values or value in values
-
-    def regions(self) -> list[str]:
-        """The `regions` claim of the service JWT (section 8)."""
-        values = self.scopes.get("region", frozenset())
-        return [SCOPE_ALL] if SCOPE_ALL in values else sorted(values)
-
     def _cache_dump(self) -> str:
         return json.dumps(
             {
                 "username": self.username,
                 "full_name": self.full_name,
                 "permissions": sorted(self.permissions),
-                "scopes": {k: sorted(v) for k, v in self.scopes.items()},
             }
         )
 
@@ -108,7 +91,6 @@ class PrincipalLoader:
                     username=data["username"],
                     full_name=data["full_name"],
                     permissions=frozenset(data["permissions"]),
-                    scopes={k: frozenset(v) for k, v in data["scopes"].items()},
                     perm_version=version,
                     session_key=session.key,
                 )
@@ -136,20 +118,11 @@ class PrincipalLoader:
                 .join(UserRole, UserRole.role_id == RolePermission.role_id)
                 .where(UserRole.user_id == user_id)
             )
-            scope_rows = await db.execute(
-                select(UserScope.scope_type, UserScope.scope_value).where(
-                    UserScope.user_id == user_id
-                )
-            )
-            scopes: dict[str, set[str]] = {}
-            for scope_type, scope_value in scope_rows.all():
-                scopes.setdefault(scope_type, set()).add(scope_value)
             return Principal(
                 user_id=user.id,
                 username=user.username,
                 full_name=user.full_name,
                 permissions=frozenset(permissions.all()),
-                scopes={k: frozenset(v) for k, v in scopes.items()},
                 perm_version=user.perm_version,
             )
 
