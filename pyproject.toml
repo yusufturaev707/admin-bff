@@ -3,7 +3,7 @@ name = "admin-bff"
 version = "0.1.0"
 description = "UZBMB yagona adminka backend'i (Admin BFF)"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.14",
     "argon2-cffi>=23.1",
@@ -38,7 +38,7 @@ dev = [
 package = false
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
@@ -60,7 +60,7 @@ select = [
 "datetime.datetime.utcfromtimestamp".msg = "Use datetime.fromtimestamp(ts, UTC)."
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.12"
 strict = true
 warn_unreachable = true
 plugins = ["pydantic.mypy"]

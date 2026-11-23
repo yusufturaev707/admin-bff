@@ -11,18 +11,24 @@ Frontend uchun qo'llanma: [`docs/frontend.md`](docs/frontend.md), xavfsizlik:
 
 ## Talablar
 
-- Python 3.13 (`.python-version`)
+- Python 3.12 (`.python-version`)
 - [uv](https://docs.astral.sh/uv/)
 - PostgreSQL 16+ va Redis 7+ (lokal o'rnatilgan, Docker ishlatilmaydi)
 
 Dependency'lar faqat `pyproject.toml` va `uv.lock`da, ular `uv sync` bilan
 o'rnatiladi. `requirements.txt` yo'q.
 
-Serverlar: **Debian 13 (trixie)**. Uning paketlari talablarga mos keladi:
-Python 3.13, PostgreSQL 17 va nginx 1.26. `http2 on;` sintaksisi nginx
-1.25.1'dan beri ishlaydi. Redis versiyasini o'rnatishdan oldin
-`apt policy redis-server` bilan tekshiring, kamida 7 bo'lishi kerak.
-Python serverga alohida o'rnatilmaydi, tizimdagi `python3.13` ishlatiladi.
+Serverlar: **Debian 13 (trixie)**. Uning PostgreSQL 17 va nginx 1.26
+paketlari talablarga mos keladi. `http2 on;` sintaksisi nginx 1.25.1'dan beri
+ishlaydi. Redis versiyasini o'rnatishdan oldin `apt policy redis-server` bilan
+tekshiring, kamida 7 bo'lishi kerak.
+
+**Python 3.12 serverga alohida o'rnatiladi:** Debian 13'da faqat
+`python3.13` paketi bor. `deploy.sh` Python'ni internetdan yuklamaydi
+(`UV_PYTHON_DOWNLOADS=never`), uni tizimda `python3.12` nomi bilan qidiradi,
+masalan `/usr/local/bin/python3.12` (manbadan `make altinstall`). Python
+`/root` yoki boshqa uy papkasiga o'rnatilmasin: servis `ProtectHome=yes` bilan
+ishlaydi va u yerni ko'rmaydi.
 
 ## Lokal ishga tushirish
 

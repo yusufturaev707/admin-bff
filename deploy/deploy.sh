@@ -17,7 +17,8 @@ git pull --ff-only
 
 echo "==> uv sync"
 # --compile-bytecode: kod papkasi read-only, .pyc oldindan yaratiladi.
-# Python: Debian 13'ning o'z python3.13 paketi (.python-version = 3.13).
+# Python 3.12 (.python-version). Debian 13'da u paket sifatida yo'q, serverga
+# alohida o'rnatiladi, masalan /usr/local/bin/python3.12 (README, "Talablar").
 # Ichki tarmoqda tashqi yuklab olish yopiq, shuning uchun uv Python'ni
 # hech qachon internetdan yuklamaydi: tizimda topilmasa, xato beradi.
 UV_PYTHON_DOWNLOADS=never "$UV" sync --frozen --no-dev --compile-bytecode
