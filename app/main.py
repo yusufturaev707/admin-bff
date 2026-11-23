@@ -26,7 +26,13 @@ from app.auth.dependencies import CSRF_HEADER
 from app.auth.oneid import OneIdClient, build_oneid_client
 from app.auth.passwords import PasswordService
 from app.auth.service import build_auth_service
-from app.core.db import create_engine, create_sessionmaker, ping_database
+from app.core.db import (
+    create_engine,
+    create_sessionmaker,
+    database_revision,
+    migration_heads,
+    ping_database,
+)
 from app.core.db_privileges import audit_privilege_problems
 from app.core.errors import install_exception_handlers
 from app.core.logging import configure_logging, get_logger
@@ -78,17 +84,31 @@ Batafsil: repo'dagi `docs/frontend.md`.
 logger = get_logger(__name__)
 
 
-async def check_audit_privileges(engine: AsyncEngine, settings: Settings) -> None:
-    """Section 9: the service's DB role may only append to the audit log.
-    Production refuses to start otherwise; other environments only warn
-    (development usually runs everything as one role)."""
+async def check_database(engine: AsyncEngine, settings: Settings) -> None:
+    """At startup:
+
+    * the schema must be at the code's migration head, in every environment:
+      an old schema only fails later, request by request, with a 500;
+    * section 9: the service's DB role may only append to the audit log.
+      Production refuses to start otherwise; other environments only warn
+      (development usually runs everything as one role).
+
+    If the database cannot be reached, production refuses to start and other
+    environments only warn (/ready reports it)."""
     try:
+        revision = await database_revision(engine)
         problems = await audit_privilege_problems(engine)
     except Exception as exc:
         if settings.is_production:
-            raise RuntimeError("cannot check the DB privileges of the audit tables") from exc
-        logger.warning("audit_privileges_unchecked", error=type(exc).__name__)
+            raise RuntimeError("cannot check the database at startup") from exc
+        logger.warning("database_unchecked", error=type(exc).__name__)
         return
+    expected = migration_heads()
+    if revision not in expected:
+        raise RuntimeError(
+            f"the database schema is at revision {revision or 'none'}, the code expects "
+            f"{', '.join(sorted(expected))}. Run: uv run alembic upgrade head"
+        )
     if not problems:
         return
     if settings.is_production:
@@ -130,7 +150,7 @@ def _lifespan(
         engine = create_engine(settings)
         redis = create_redis(settings)
         try:
-            await check_audit_privileges(engine, settings)
+            await check_database(engine, settings)
             db = create_sessionmaker(engine)
             audit = DbAuditSink(
                 db, clock=clock, listeners=[MetricsAuditListener(), *audit_listeners]
@@ -187,7 +207,7 @@ def create_app(
     configure_logging(settings)
 
     app = FastAPI(
-        title="UZBMB Admin BFF",
+        title="UZBMB Admin",
         version=__version__,
         description=API_DESCRIPTION,
         # FastAPI's own schema and docs routes are off: app.api.docs serves both,

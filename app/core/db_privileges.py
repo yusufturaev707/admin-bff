@@ -26,7 +26,8 @@ DEFAULT_TABLE_PRIVILEGES: tuple[str, ...] = ("SELECT", "INSERT", "UPDATE", "DELE
 RESTRICTED_TABLES: dict[str, tuple[str, ...]] = {
     "audit_log": ("SELECT", "INSERT"),
     "audit_anchors": ("SELECT",),
-    "alembic_version": (),
+    # Read only: the startup check compares the schema with the code.
+    "alembic_version": ("SELECT",),
 }
 # Columns the application may not set on INSERT: they take their default, so
 # it cannot pick the id of an audit record (column-level INSERT privilege).

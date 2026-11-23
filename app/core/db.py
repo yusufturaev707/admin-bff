@@ -5,8 +5,12 @@ to (architecture decision 3): they are reached through their internal admin API.
 """
 
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, ClassVar
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import DateTime, MetaData, text
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import (
@@ -74,6 +78,24 @@ def create_engine(settings: Settings) -> AsyncEngine:
 
 def create_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
+
+
+@lru_cache(maxsize=1)
+def migration_heads() -> frozenset[str]:
+    """The revisions the code expects (the heads of migrations/)."""
+    return frozenset(ScriptDirectory.from_config(Config(str(ALEMBIC_INI))).get_heads())
+
+
+async def database_revision(engine: AsyncEngine) -> str | None:
+    """The revision the database is at; None if it was never migrated."""
+    async with engine.connect() as conn:
+        if await conn.scalar(text("SELECT to_regclass('alembic_version')")) is None:
+            return None
+        revision = await conn.scalar(text("SELECT version_num FROM alembic_version"))
+    return revision if isinstance(revision, str) else None
 
 
 async def ping_database(engine: AsyncEngine) -> None:

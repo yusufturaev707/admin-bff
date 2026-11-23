@@ -133,7 +133,11 @@ async def test_app_role_has_full_access_to_the_other_tables(role_settings: Setti
                     "SELECT has_table_privilege($1, $2)", table, privilege
                 ), (table, privilege)
             assert not await conn.fetchval("SELECT has_table_privilege($1, 'TRUNCATE')", table)
-        assert not await conn.fetchval("SELECT has_table_privilege('alembic_version', 'SELECT')")
+        assert await conn.fetchval("SELECT has_table_privilege('alembic_version', 'SELECT')")
+        for privilege in ("INSERT", "UPDATE", "DELETE", "TRUNCATE"):
+            assert not await conn.fetchval(
+                "SELECT has_table_privilege('alembic_version', $1)", privilege
+            )
     finally:
         await conn.close()
 
@@ -191,7 +195,7 @@ async def test_production_refuses_to_start_without_the_database(settings: Settin
         }
     )
     app = create_app(production)
-    with pytest.raises(RuntimeError, match="cannot check the DB privileges"):
+    with pytest.raises(RuntimeError, match="cannot check the database"):
         async with app.router.lifespan_context(app):
             pass
 

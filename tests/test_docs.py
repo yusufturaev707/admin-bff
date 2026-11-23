@@ -41,7 +41,7 @@ async def production(
     async def no_check(*args: object) -> None:
         return None
 
-    monkeypatch.setattr(main, "check_audit_privileges", no_check)
+    monkeypatch.setattr(main, "check_database", no_check)
     strong = {"app_env": "production", "argon2_time_cost": 2, "argon2_memory_cost_kib": 19456}
     async with app_client(create_app(settings.model_copy(update=strong), clock=clock)) as c:
         yield c
@@ -66,7 +66,7 @@ async def test_docs_need_the_permission_in_production(
     developer = await make_admin_with(settings, clock, ["admin:api:docs"])
     await login(production, developer, clock)
     assert (await production.get(DOCS_URL)).status_code == 200
-    assert (await production.get(OPENAPI_URL)).json()["info"]["title"] == "UZBMB Admin BFF"
+    assert (await production.get(OPENAPI_URL)).json()["info"]["title"] == "UZBMB Admin"
 
 
 @pytest.mark.parametrize("path", ["/openapi.json", "/docs", "/redoc"])

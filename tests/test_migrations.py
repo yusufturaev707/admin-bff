@@ -3,6 +3,7 @@
 import asyncio
 import secrets
 
+import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
@@ -16,6 +17,7 @@ import app.auth.models
 import app.rbac.models  # noqa: F401  (all register their tables)
 from app.audit.models import include_name
 from app.core.db import Base, database_url
+from app.main import create_app
 from app.settings import Settings, load_settings
 from tests.conftest import Services
 
@@ -70,3 +72,23 @@ def test_audit_migration_downgrades_and_upgrades_again(services: Services) -> No
         assert "audit_anchors" in asyncio.run(tables())
     finally:
         asyncio.run(admin(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+
+
+async def test_an_unmigrated_database_stops_startup(settings: Settings, services: Services) -> None:
+    name = f"admin_bff_test_empty_{secrets.token_hex(4)}"
+    conn = await services.pg_connect("postgres")
+    try:
+        await conn.execute(f'CREATE DATABASE "{name}"')
+    finally:
+        await conn.close()
+    try:
+        app = create_app(settings.model_copy(update={"db_name": name}))
+        with pytest.raises(RuntimeError, match="alembic upgrade head"):
+            async with app.router.lifespan_context(app):
+                pass
+    finally:
+        conn = await services.pg_connect("postgres")
+        try:
+            await conn.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        finally:
+            await conn.close()
