@@ -1,3 +1,4 @@
+import hashlib
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
@@ -50,3 +51,27 @@ def test_scrub_text_masks_all_patterns() -> None:
 def test_scrub_text_leaves_uuids_and_timestamps() -> None:
     text = "request 0b9c5e1e-3f7a-4d43-9a43-6f1a2b9d8c11 at 1763640000"
     assert scrub_text(text) == text
+
+
+def test_scrub_text_leaves_hashes_intact() -> None:
+    # The audit copy in journald carries record hashes; a digit run inside a hex
+    # hash is not a PINFL or a phone number. (Before the fix ~1% were altered.)
+    assert scrub_text("ab12345678901234cd") == "ab12345678901234cd"
+    assert scrub_text("f0998901234545ee") == "f0998901234545ee"
+    for i in range(20_000):
+        digest = hashlib.sha256(str(i).encode()).hexdigest()
+        assert scrub_text(digest) == digest, digest
+
+
+@pytest.mark.parametrize(
+    ("text", "masked"),
+    [
+        ('{"pinfl": "31201234560045"}', '{"pinfl": "3120*****0045"}'),
+        ("/students/31201234560045/photo", "/students/3120*****0045/photo"),
+        ("PINFL_31201234560045", "PINFL_3120*****0045"),
+        ("31201234560045", "3120*****0045"),
+        ("tel:+998901234545.", "tel:+998 90 *** ** 45."),
+    ],
+)
+def test_scrub_text_still_masks_standalone_values(text: str, masked: str) -> None:
+    assert scrub_text(text) == masked

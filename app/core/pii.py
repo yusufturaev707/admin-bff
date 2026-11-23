@@ -8,15 +8,24 @@ Masks:
 `scrub_text` finds these patterns inside arbitrary text and is used by the log
 processor, so personal data never reaches the logs even if a message or an
 exception text contains it.
+
+A value is masked only when it stands alone: not next to a Latin letter or a
+digit. A digit run inside a hex hash or token (`...ab12345678901234cd...`) is
+not personal data, and masking it would alter the record hashes in the audit
+copy that leaves the database (about 1 in 100 sha256 hashes). Separators such
+as space, quotes, `=`, `/`, `:` and `_` still count as a boundary.
 """
 
 import re
 
-PINFL_RE = re.compile(r"(?<!\d)(\d{4})\d{6}(\d{4})(?!\d)")
+_EDGE_BEFORE = r"(?<![0-9A-Za-z])"
+_EDGE_AFTER = r"(?![0-9A-Za-z])"
+
+PINFL_RE = re.compile(rf"{_EDGE_BEFORE}(\d{{4}})\d{{6}}(\d{{4}}){_EDGE_AFTER}")
 PHONE_RE = re.compile(
-    r"(?<![\d+])\+?998[\s-]?\(?(\d{2})\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?(\d{2})(?!\d)"
+    rf"(?<![0-9A-Za-z+])\+?998[\s-]?\(?(\d{{2}})\)?[\s-]?\d{{3}}[\s-]?\d{{2}}[\s-]?(\d{{2}}){_EDGE_AFTER}"
 )
-PASSPORT_RE = re.compile(r"(?<![A-Za-z0-9])([A-Z]{2})\d{5}(\d{2})(?!\d)")
+PASSPORT_RE = re.compile(rf"{_EDGE_BEFORE}([A-Z]{{2}})\d{{5}}(\d{{2}}){_EDGE_AFTER}")
 
 
 def mask_pinfl(value: str) -> str:
