@@ -9,6 +9,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 
 SUPERADMIN_ROLE = "superadmin"
+# Serialises the changes that can leave fewer active superadmins
+# (pg_advisory_xact_lock). int.from_bytes(b"superadm").
+SUPERADMIN_LOCK_KEY = 8319679467649852525
 
 # Mirrors app.rbac.permissions.PATTERN_RE, so the DB itself refuses garbage.
 _PATTERN_SQL = r"permission ~ '^(\*|[a-z][a-z0-9_]*):(\*|[a-z][a-z0-9_]*):(\*|[a-z][a-z0-9_]*)$'"

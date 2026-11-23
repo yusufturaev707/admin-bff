@@ -6,7 +6,8 @@ Rules against privilege escalation, enforced for every change:
 * an admin cannot manage an admin who holds more than it does;
 * an admin cannot change its own roles, sign-in methods or status;
 * the system role `superadmin` cannot be edited or deleted, and the last active
-  superadmin cannot be demoted or blocked.
+  superadmin cannot be demoted or blocked. Those changes take an advisory lock
+  first, so two superadmins cannot block each other at the same moment.
 
 A role change takes effect on the next request (perm_version, see principal.py);
 an admin whose roles change, who is blocked or whose password is reset also
@@ -19,7 +20,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -33,7 +34,7 @@ from app.auth.sessions import SessionStore
 from app.core.errors import AppError, ErrorCode, field_error
 from app.core.pagination import PageParams
 from app.core.pii import mask_pinfl
-from app.rbac.models import SUPERADMIN_ROLE, Role, RolePermission, UserRole
+from app.rbac.models import SUPERADMIN_LOCK_KEY, SUPERADMIN_ROLE, Role, RolePermission, UserRole
 from app.rbac.permissions import is_valid_pattern
 from app.rbac.principal import Principal, PrincipalLoader
 from app.rbac.registry import PermissionRegistry
@@ -43,6 +44,8 @@ FORBIDDEN_SELF = "O'z rolingiz, kirish usullaringiz va holatingizni o'zgartira o
 FORBIDDEN_HIGHER = "Sizdan yuqori huquqli adminni boshqara olmaysiz"
 FORBIDDEN_GRANT = "O'zingizda yo'q huquqni bera olmaysiz"
 LAST_SUPERADMIN = "Oxirgi faol superadminni o'chirib yoki bloklab bo'lmaydi"
+
+_SUPERADMIN_LOCK = text("SELECT pg_advisory_xact_lock(:key)")
 
 _SORT_COLUMNS = {
     "username": AdminUser.username,
@@ -169,6 +172,13 @@ class AdminService:
             .where(UserRole.user_id == user_id)
         )
         return set(rows.all())
+
+    @staticmethod
+    async def _lock_superadmins(db: AsyncSession) -> None:
+        """Taken first in a transaction that may leave fewer active superadmins,
+        and held until it commits. Otherwise two such changes running at once
+        would each still see the other superadmin and both go through."""
+        await db.execute(_SUPERADMIN_LOCK, {"key": SUPERADMIN_LOCK_KEY})
 
     async def _active_superadmins(self, db: AsyncSession) -> set[uuid.UUID]:
         rows = await db.scalars(
@@ -341,6 +351,8 @@ class AdminService:
         revoke = False
         try:
             async with self._db() as db, db.begin():
+                if changes.get("is_active") is False:
+                    await self._lock_superadmins(db)
                 user = await self._user_or_404(db, user_id)
                 sensitive = set(changes) - {"full_name"}
                 if user.id == actor.user_id and sensitive:
@@ -405,6 +417,7 @@ class AdminService:
         self, actor: Principal, meta: RequestMeta, user_id: uuid.UUID, role_ids: Sequence[uuid.UUID]
     ) -> UserView:
         async with self._db() as db, db.begin():
+            await self._lock_superadmins(db)
             user = await self._user_or_404(db, user_id)
             await self._ensure_can_manage(db, actor, user)
             roles = await self._roles_or_422(db, role_ids)

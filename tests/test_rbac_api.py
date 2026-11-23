@@ -1,5 +1,6 @@
 """Section 7 / 12: RBAC over the admin API."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -7,8 +8,11 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.sink import AuditOutcome
+from app.rbac.models import SUPERADMIN_ROLE
+from app.rbac.service import AdminService
 from app.settings import Settings
 from tests.auth_helpers import AUTH, Admin, create_admin, login, random_password
 from tests.conftest import AuditRecorder, FakeClock
@@ -208,6 +212,43 @@ async def test_last_superadmin_is_protected(
         response = await me.send(method, path, body)
         assert response.status_code == 409, path
         assert response.json()["error"]["code"] == "conflict"
+
+
+@pytest.mark.parametrize(
+    ("method", "suffix", "body"),
+    [("PATCH", "", {"is_active": False}), ("PUT", "/roles", {"role_ids": []})],
+)
+async def test_two_superadmins_cannot_remove_each_other_at_once(
+    browsers: Any,
+    settings: Settings,
+    clock: FakeClock,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    suffix: str,
+    body: dict[str, Any],
+) -> None:
+    role_id = await make_role(settings, ["*:*:*"], name=SUPERADMIN_ROLE, system=True)
+    first = await create_admin(settings, clock)
+    second = await create_admin(settings, clock)
+    for admin in (first, second):
+        await grant(settings, admin.id, [role_id])
+    one, other = await browsers(first), await browsers(second)
+
+    # Each request would read "two superadmins are active" before the other one
+    # commits, unless these changes are serialised.
+    count_superadmins = AdminService._active_superadmins
+
+    async def slow(service: AdminService, db: AsyncSession) -> set[uuid.UUID]:
+        found = await count_superadmins(service, db)
+        await asyncio.sleep(0.2)
+        return found
+
+    monkeypatch.setattr(AdminService, "_active_superadmins", slow)
+    responses = await asyncio.gather(
+        one.send(method, f"{ADMIN}/users/{second.id}{suffix}", body),
+        other.send(method, f"{ADMIN}/users/{first.id}{suffix}", body),
+    )
+    assert sorted(r.status_code for r in responses) == [200, 409]
 
 
 async def test_role_rules(browsers: Any, settings: Settings, clock: FakeClock) -> None:
