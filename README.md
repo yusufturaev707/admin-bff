@@ -5,7 +5,7 @@ ejournal, quloq dastur va keyin qo'shiladiganlar) shu BFF orqali bitta
 adminkadan boshqariladi. Frontend faqat shu API bilan ishlaydi
 (`/api/v1/openapi.json`, snapshot: `openapi/v1.json`).
 
-Holat: **1-bosqich (Auth)**. Bosqichlar ro'yxati `CLAUDE.md`ning 12-bo'limida.
+Holat: **2-bosqich (RBAC)**. Bosqichlar ro'yxati `CLAUDE.md`ning 12-bo'limida.
 Frontend uchun qo'llanma: [`docs/frontend.md`](docs/frontend.md).
 
 ## Talablar
@@ -39,6 +39,7 @@ CREATE DATABASE admin_bff OWNER admin_bff;
 
 ```bash
 uv run alembic upgrade head                                 # jadvallar
+uv run python -m app.cli sync-permissions                    # permission'lar
 uv run python -m app.cli create-superadmin --username admin # parol so'raladi
 uv run uvicorn --factory app.main:create_app --reload --port 8000
 ```
@@ -155,6 +156,8 @@ sudo /opt/admin-bff/deploy/deploy.sh
 ```bash
 uv run python -m app.cli export-openapi [--check]
 uv run python -m app.cli create-superadmin --username <login>   # parol interaktiv so'raladi
+uv run python -m app.cli create-superadmin --username <login> --existing  # mavjudini superadmin qilish
+uv run python -m app.cli sync-permissions                       # har deploy'da (deploy.sh)
 uv run python -m app.cli unlock-login --username <login> [--ip <ip>]
 uv run python -m app.cli reencrypt-totp                          # TOTP_ENC_KEY rotatsiyasidan keyin
 uv run python -m app.cli reset-totp --username <login>           # yoki --all --yes (kalit yo'qolsa)
@@ -163,5 +166,4 @@ uv run python -m app.cli reset-totp --username <login>           # yoki --all --
 Kalitlarni saqlash, zaxiralash va rotatsiya qilish tartibi:
 [`docs/security.md`](docs/security.md).
 
-Keyingi bosqichlarda qo'shiladi: `sync-permissions`, `rotate-keys`,
-`verify-audit`.
+Keyingi bosqichlarda qo'shiladi: `rotate-keys`, `verify-audit`.

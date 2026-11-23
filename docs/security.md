@@ -1,7 +1,7 @@
 # Xavfsizlik: qisqa threat model va qabul qilingan qarorlar
 
-Hujjat bosqichma-bosqich to'ldiriladi. Hozir unda autentifikatsiya (1-bosqich)
-va kalitlarni boshqarish bor.
+Hujjat bosqichma-bosqich to'ldiriladi. Hozir unda autentifikatsiya (1-bosqich),
+avtorizatsiya (2-bosqich) va kalitlarni boshqarish bor.
 
 ## Nimadan himoyalanamiz
 
@@ -14,6 +14,40 @@ va kalitlarni boshqarish bor.
 | CSRF | `Origin` aynan frontend bilan solishtiriladi, `X-CSRF-Token` sessiyadagi token bilan `compare_digest` orqali tekshiriladi |
 | DB yoki DB backup sizib chiqishi | Parol va recovery code Argon2id hash ko'rinishida. TOTP secret AES-256-GCM bilan shifrlangan, kalit DB'da emas. PINFL faqat HMAC hash sifatida saqlanadi |
 | Log orqali sizib chiqish | Parol, kod, token va cookie log'ga yozilmaydi. PII maskalanadi. Mavjud bo'lmagan login audit'ga ochiq yozilmaydi, chunki ba'zan unga parol kiritib yuboriladi |
+
+## Avtorizatsiya (RBAC)
+
+- **Deny-by-default.** Ishga tushishda har bir route tekshiriladi. Ilova ikki
+  holatda umuman ishga tushmaydi:
+  - route'da guard yo'q va u public ro'yxatda ham emas. Guard'lar:
+    `require(...)`, `get_principal`, sessiya tekshiruvi. Public ro'yxat: login,
+    mfa, OneID, `/health`, `/ready`;
+  - route registry'da e'lon qilinmagan permission'ni talab qiladi.
+- **Route doim aniq permission talab qiladi.** Wildcard (`faceid:*:read`)
+  faqat rol orqali adminga beriladi.
+- **Har bir rad etish audit'ga yoziladi** (`rbac.denied`).
+- **Huquqni oshirishdan himoya:**
+  - admin faqat o'zida bor permission va hududni bera oladi;
+  - o'zidan yuqori huquqli adminni boshqara olmaydi;
+  - o'z rollarini, hududlarini, kirish usullarini va holatini o'zgartira
+    olmaydi;
+  - o'zi a'zo bo'lgan rolni tahrirlay olmaydi.
+- **Superadmin.** `superadmin` tizim roli (`*:*:*`) faqat CLI orqali beriladi.
+  U API orqali tahrirlanmaydi va o'chirilmaydi. Oxirgi faol superadminni
+  bloklab ham, rolidan ayirib ham bo'lmaydi.
+- **Step-up.** Admin va rollardagi har bir o'zgarish TOTP so'nggi 5 daqiqa
+  ichida kiritilgan bo'lishini talab qiladi. Spetsifikatsiya buni faqat xavfli
+  amallar uchun talab qiladi, lekin bu endpoint'lar kim nima qila olishini
+  hal qiladi, shuning uchun xavfsizroq variant tanlandi.
+- **O'zgarish qachon kuchga kiradi.**
+  - Rol tahrirlansa: uning a'zolarida keyingi so'rovdan boshlab
+    (`perm_version`).
+  - Admin bloklansa, uning rollari, kirish usullari, paroli yoki TOTP'i
+    o'zgartirilsa: u adminning barcha sessiyalari tugaydi.
+- **Hududlar (scope).** Barcha adminlar bitta markaziy binoda ishlaydi,
+  shuning uchun hozir hammasiga `*` beriladi. Mexanizm baribir ishlaydi:
+  - scope berilmagan admin hech narsani ko'rmaydi;
+  - boshqa hudud ob'ekti so'ralsa, 403 emas, 404 qaytadi (BOLA'ga qarshi).
 
 ## Kalitlar
 

@@ -4,8 +4,9 @@ Frontend faqat BFF API bilan ishlaydi. Sxema: `/api/v1/openapi.json`
 (production'da yopiq), repo'dagi nusxasi: `openapi/v1.json`. Client'ni sxemadan
 `openapi-typescript` yoki `orval` bilan generatsiya qiling.
 
-Bu hujjatda hozircha autentifikatsiya qismi bor (1-bosqich). Meta
-endpoint'lar va permission'lar keyingi bosqichlarda qo'shiladi.
+Bu hujjatda autentifikatsiya (1-bosqich), ruxsatlar va adminlarni
+boshqarish (2-bosqich) bor. Tizimlar uchun meta endpoint'lar keyingi
+bosqichlarda qo'shiladi.
 
 ## Umumiy qoidalar
 
@@ -148,6 +149,79 @@ Xavfli amal oldidan admin TOTP kodni qayta kiritishi kerak bo'lishi mumkin:
 3. Javob `200` bo'lsa, amalni qaytadan yuboring.
 
 Step-up 5 daqiqa amal qiladi.
+
+## Ruxsatlar va menyu: `GET /api/v1/me`
+
+Kirgandan keyin frontend `GET /api/v1/me`ni chaqiradi va menyuni shu javobga
+qarab quradi:
+
+```json
+{
+  "id": "...",
+  "username": "operator_toshkent",
+  "full_name": "Aliyev Vali",
+  "roles": [{"id": "...", "name": "auditor"}],
+  "permissions": ["admin:users:read", "faceid:*:read"],
+  "scopes": [{"type": "region", "value": "*"}],
+  "totp_enabled": true,
+  "must_change_password": false,
+  "mfa_at": "2026-11-23T09:15:02Z"
+}
+```
+
+- **Permission formati** `tizim:resurs:amal`. Ro'yxatda wildcard ham bo'lishi
+  mumkin: `faceid:*:read` Face-ID'dagi hamma narsani ko'rishni, `*:*:*` esa
+  hamma narsani bildiradi. Tekshiruv: har bir qismi teng bo'lsa yoki `*` bo'lsa,
+  ruxsat bor.
+- **Tugmani yashirish faqat qulaylik uchun.** Haqiqiy tekshiruvni backend
+  qiladi. Ruxsat bo'lmasa, javob `403 forbidden` bo'ladi.
+- **Rollar darhol kuchga kiradi.** Superadmin rolni o'zgartirsa, keyingi
+  so'rovdan boshlab yangi ruxsatlar ishlaydi. Adminning o'z rollari
+  o'zgartirilsa, uning sessiyalari tugaydi va u qaytadan kiradi.
+
+## Adminlarni boshqarish: `/api/v1/admin`
+
+| Endpoint | Ruxsat |
+| --- | --- |
+| `GET /admin/users`, `GET /admin/users/{id}` | `admin:users:read` |
+| `POST /admin/users`, `PATCH /admin/users/{id}` | `admin:users:write` |
+| `PUT /admin/users/{id}/roles`, `PUT /admin/users/{id}/scopes` | `admin:users:write` |
+| `POST /admin/users/{id}/reset-password`, `.../reset-totp`, `.../unlock` | `admin:users:security` |
+| `GET /admin/roles`, `GET /admin/roles/{id}`, `GET /admin/permissions` | `admin:roles:read` |
+| `POST /admin/roles`, `PATCH /admin/roles/{id}`, `DELETE /admin/roles/{id}` | `admin:roles:write` |
+
+- **Step-up.** Barcha o'zgartiruvchi so'rovlar (`POST`, `PATCH`, `PUT`,
+  `DELETE`) uchun TOTP so'nggi 5 daqiqa ichida kiritilgan bo'lishi kerak.
+  Aks holda javob `401 step_up_required` bo'ladi. Shunda TOTP oynasini oching,
+  kodni `POST /auth/step-up`ga yuboring va so'rovni qaytadan yuboring.
+- **Vaqtinchalik parol.** Admin yaratilganda yoki parol tiklanganda javobda
+  `initial_password` keladi. U faqat shu javobda, bir marta keladi: ko'rsating
+  va saqlamang. Yangi admin birinchi kirishda TOTP'ni ulaydi va parolni
+  almashtiradi.
+- **Rol tahrirlash oynasi.** Ro'yxatni `GET /admin/permissions` beradi. Unda
+  permission'lar tizimlar bo'yicha guruhlangan va har birining o'zbekcha
+  tavsifi bor.
+- **Rad etiladigan holatlar (`403`):**
+  - admin o'zida yo'q permission yoki hududni boshqaga bera olmaydi;
+  - o'z rollarini, hududlarini, kirish usullarini va holatini o'zgartira
+    olmaydi;
+  - o'zidan yuqori huquqli adminni boshqara olmaydi.
+- **`409 conflict` holatlari:**
+  - adminlarga biriktirilgan rolni o'chirib bo'lmaydi;
+  - `superadmin` tizim roli o'zgarmaydi;
+  - oxirgi faol superadminni bloklab ham, rolidan ayirib ham bo'lmaydi.
+- **OneID.** Admin `auth_methods: ["oneid"]` bilan yaratilsa, `pinfl` majburiy.
+  Javobda faqat maskalangan ko'rinishi keladi (`pinfl_masked`).
+
+## Ro'yxatlar
+
+- **Pagination:** `?page=1&page_size=50`, `page_size` 100 dan oshmaydi. Javob
+  `{"items": [...], "page": 1, "page_size": 50, "total": 120}`.
+- **Saralash:** `?sort=username` yoki `?sort=-created_at` (minus kamayish
+  tartibini bildiradi).
+- **Noma'lum parametr** `422` qaytaradi, `details.fields[0].type` esa
+  `"unknown_parameter"` bo'ladi. Shu sababli filtr nomidagi xato e'tiborsiz
+  qolib, filtrlanmagan ma'lumot qaytmaydi.
 
 ## Xato kodlari
 
