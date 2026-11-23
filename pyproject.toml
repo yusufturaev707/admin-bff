@@ -6,12 +6,15 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.14",
+    "argon2-cffi>=23.1",
     "asyncpg>=0.30",
-    "fastapi>=0.115",
+    "cryptography>=44.0",
+    "fastapi>=0.165",  # fastapi.routing.iter_route_contexts (app/core/routes.py)
     "gunicorn>=23.0",
     "httpx>=0.28",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
+    "pyotp>=2.9",
     "redis>=5.2",
     "sqlalchemy[asyncio]>=2.0.36",
     "structlog>=24.4",
@@ -73,3 +76,8 @@ addopts = "-ra --strict-markers --strict-config"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = ["error"]
+
+[[tool.mypy.overrides]]
+# asyncpg ships no type hints; it is used directly only by the test fixtures.
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
