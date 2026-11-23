@@ -691,9 +691,9 @@ Bu savollarga javobni agentga ishni boshlashdan oldin bering. Javobi yo'q savoll
 - [x] Har bir tizim uchun: base URL yoki unix socket, hozirgi adminkada qilinadigan ishlar, adminkada qaysi ro'yxatlar va amallar kerakligi.
 
   Javob: har bir tizimning hozirgi adminkasidagi funksiyalar aynan ko'chiriladi. Face-ID manzili 2-bo'limdagi misolda yozilgan, qolgan tizimlarniki keyin beriladi.
-- [ ] Hududiy cheklov modeli: adminlar qaysi daraja bo'yicha cheklanadi (viloyat, zona, bino, smena).
+- [x] Hududiy cheklov modeli: adminlar qaysi daraja bo'yicha cheklanadi (viloyat, zona, bino, smena).
 
-  Javob: adminka faqat bino ichida ishlatiladi, kirish whitelist orqali. Adminlarni viloyat yoki zona bo'yicha cheklash kerakmi, hali aniqlanmagan.
+  Javob: barcha adminlar bitta markaziy binoda, lokal tarmoqda ishlaydi. Kompyuter `hosts` fayliga yozilgan bo'lsa, adminka ochiladi. Hududiy cheklash hozircha kerak emas. Scope mexanizmi (7-bo'lim) baribir quriladi va adminlarga `*` (barcha hududlar) beriladi. Kerak bo'lganda superadmin adminkaning o'zida cheklaydi, kod o'zgarmaydi.
 - [x] Rollar: qanday lavozimlar bor (masalan, viloyat operatori, markaz admini, auditor) va har biri nima qila oladi.
 
   Javob: rollarni superadmin adminkaning o'zida yaratadi (7-bo'lim).
