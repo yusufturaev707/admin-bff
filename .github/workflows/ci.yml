@@ -10,10 +10,9 @@
 # - pull_request_target ishlatilmaydi, fork'dan kelgan PR kodi yozish
 #   huquqisiz ishlaydi.
 # - CI'ga secret kerak emas: testlar tasodifiy generatsiya qilingan
-#   qiymatlardan foydalanadi.
-#
-# TODO: 1-bosqichda testlar uchun PostgreSQL va Redis qo'shiladi
-# (runner'ga apt orqali o'rnatiladi, service container'siz).
+#   qiymatlardan foydalanadi, test DB paroli ham har safar yangidan yaratiladi.
+# - Testlar uchun PostgreSQL va Redis runner'ga apt orqali o'rnatiladi
+#   (Docker service container'siz, 3-bo'lim 9-qaror).
 
 name: CI
 
@@ -47,6 +46,19 @@ jobs:
         with:
           # uv.lock shu versiya bilan yaratilgan. Python versiyasi .python-version'dan olinadi.
           version: "0.13.9"
+
+      - name: Start PostgreSQL and Redis
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q postgresql redis-server
+          sudo systemctl start postgresql.service redis-server.service
+          DB_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$DB_PASSWORD"
+          cd /tmp
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -v pw="$DB_PASSWORD" <<'SQL'
+          CREATE ROLE admin_bff LOGIN CREATEDB PASSWORD :'pw';
+          SQL
+          echo "DB_PASSWORD=$DB_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Run checks
         run: bash scripts/ci.sh
