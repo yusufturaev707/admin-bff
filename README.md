@@ -44,15 +44,16 @@ ogohlantiradi. Production'da ikkita rol shart (pastda, "PostgreSQL rollari").
 
 ```bash
 uv run alembic upgrade head                                 # jadvallar
-uv run python -m app.cli sync-permissions                    # permission'lar
-uv run python -m app.cli create-superadmin --username admin # parol so'raladi
 uv run uvicorn --factory app.main:create_app --reload --port 8000
 ```
 
-Birinchi kirishda admin parolini almashtiradi (`docs/frontend.md`, "Birinchi
-kirish"). `git pull`dan keyin har safar `uv run alembic upgrade head` va
-`uv run python -m app.cli sync-permissions` bajariladi: baza eskirgan bo'lsa,
-ilova ishga tushmaydi.
+`git pull`dan keyin har safar `uv run alembic upgrade head` bajariladi: baza
+eskirgan bo'lsa, ilova ishga tushmaydi.
+
+**Diqqat.** CLI (`app/cli.py`) egasining qarori bilan (2026-11-23) olib
+tashlangan. Shuning uchun birinchi superadminni yaratadigan buyruq hozircha
+yo'q, HTTP orqali yaratish ham yo'q (6-bo'lim). Yangi admin birinchi kirishda
+parolini almashtiradi (`docs/frontend.md`, "Birinchi kirish").
 
 Tekshirish:
 
@@ -80,26 +81,18 @@ Testlar lokal PostgreSQL va Redis'da ishlaydi.
   `TEST_REDIS_URL` bering.
 - **Audit huquqlari testi.** `tests/test_audit_privileges.py` vaqtinchalik
   ilova rolini yaratadi va oxirida o'chiradi. Buning uchun `DB_USER`da
-  `CREATEROLE` bo'lishi kerak, CI'da u bor. Bo'lmasa, bu testlar "skipped"
+  `CREATEROLE` bo'lishi kerak. Bo'lmasa, bu testlar "skipped"
   bo'lib o'tadi. Ularni o'tkazib yubormang:
   `ALTER ROLE admin_bff CREATEROLE;`
 
-Hammasi bitta skriptda, CI ham shuni ishlatadi:
-
-```bash
-bash scripts/ci.sh
-```
-
-CI: GitHub Actions (`.github/workflows/ci.yml`) shu skriptni `master`'ga har
-bir push'da va har bir Pull Request'da ishga tushiradi.
-
-Alohida:
+CI yo'q (egasining qarori, 2026-11-23), tekshiruvlar qo'lda ishga
+tushiriladi:
 
 ```bash
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy --strict app/
+uv run mypy --strict app/ tests/
 uv run bandit -q -r app
 uv run pip-audit
 ```
@@ -110,7 +103,7 @@ uv run pip-audit
 O'zgarishni ko'rib chiqib, snapshot'ni yangilang:
 
 ```bash
-uv run python -m app.cli export-openapi
+UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi.py
 ```
 
 Har bir endpoint'da aniq `operation_id` (`<system>_<resource>_<verb>`) bo'lishi
@@ -160,7 +153,6 @@ Fayllar `deploy/` papkasida:
 | `nginx/admin-frontend.conf` | frontend server bloki |
 | `nginx/admin-bff-internal.conf` | faqat `127.0.0.1`: JWKS va `/metrics` |
 | `nginx/admin-allowlist.conf` | IP allowlist (sukut bo'yicha hammasi yopiq) |
-| `admin-bff-audit-retention.service`, `.timer` | har kuni: eski audit partition'larini o'chirish va zanjirni tekshirish |
 | `deploy.sh` | `git pull`, `uv sync --frozen`, `alembic upgrade head`, `systemctl reload` |
 
 Birinchi o'rnatish tartibi `admin-bff.service` faylining boshida yozilgan.
@@ -211,22 +203,7 @@ Yangilash:
 sudo /opt/admin-bff/deploy/deploy.sh
 ```
 
-## CLI
-
-```bash
-uv run python -m app.cli export-openapi [--check]
-uv run python -m app.cli create-superadmin --username <login>   # parol interaktiv so'raladi
-uv run python -m app.cli create-superadmin --username <login> --existing  # mavjudini superadmin qilish
-uv run python -m app.cli sync-permissions                       # har deploy'da (deploy.sh)
-uv run python -m app.cli unlock-login --username <login> [--ip <ip>]
-uv run python -m app.cli verify-audit                            # audit hash zanjirini tekshirish
-uv run python -m app.cli audit-retention                         # har kuni (systemd timer)
-```
-
-O'zgartiruvchi har bir buyruq audit'ga yoziladi: actor `cli`, buyruqni
-bajargan tizim foydalanuvchisi esa `details.os_user`da.
+## Kalitlar
 
 Kalitlarni saqlash, zaxiralash va rotatsiya qilish tartibi:
 [`docs/security.md`](docs/security.md).
-
-Keyingi bosqichda qo'shiladi: `rotate-keys`.

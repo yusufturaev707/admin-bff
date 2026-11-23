@@ -17,9 +17,7 @@
 #   # Kalitlarning zaxira nusxasi, rotatsiyasi va yo'qolganda nima qilish:
 #   # docs/security.md ("Kalitlar").
 #   cp deploy/admin-bff.env.example /etc/admin-bff/admin-bff.env   # root:root 0640
-#   cp deploy/admin-bff-audit-retention.{service,timer} /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable --now admin-bff
-#   systemctl enable --now admin-bff-audit-retention.timer       # 9-bo'lim, har kuni
 #
 # Tekshirish: systemd-analyze security admin-bff
 

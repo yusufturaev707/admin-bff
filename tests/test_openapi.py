@@ -1,3 +1,5 @@
+import json
+import os
 import tomllib
 from pathlib import Path
 
@@ -5,12 +7,22 @@ import pytest
 from fastapi import APIRouter, FastAPI
 
 from app import __version__
-from app.cli import DEFAULT_OPENAPI_PATH, build_openapi_document, main
 from app.core.routes import OPERATION_ID_RE, iter_api_routes, validate_routes
-from app.main import OPENAPI_URL
+from app.main import OPENAPI_URL, create_app
+from app.settings import Settings
 from tests.helpers import app_client
 
 ROOT = Path(__file__).resolve().parent.parent
+SNAPSHOT_PATH = ROOT / "openapi" / "v1.json"
+# `UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi.py` rewrites the snapshot.
+UPDATE_ENV = "UPDATE_OPENAPI_SNAPSHOT"
+
+
+def build_openapi_document() -> str:
+    """Renders the OpenAPI schema deterministically (independent of the environment)."""
+    settings = Settings(_env_file=None, app_env="test", log_level="WARNING")
+    schema = create_app(settings).openapi()
+    return json.dumps(schema, indent=2, ensure_ascii=False, sort_keys=False) + "\n"
 
 
 def test_operation_ids_are_explicit_unique_and_well_formed(app: FastAPI) -> None:
@@ -48,18 +60,14 @@ async def test_bad_route_table_stops_startup(app: FastAPI, router: APIRouter, me
 
 
 def test_openapi_snapshot_is_up_to_date() -> None:
-    snapshot = (ROOT / DEFAULT_OPENAPI_PATH).read_text(encoding="utf-8")
-    assert build_openapi_document() == snapshot, (
+    document = build_openapi_document()
+    if os.environ.get(UPDATE_ENV) == "1":
+        SNAPSHOT_PATH.write_text(document, encoding="utf-8", newline="\n")
+    snapshot = SNAPSHOT_PATH.read_text(encoding="utf-8")
+    assert document == snapshot, (
         "OpenAPI changed: review the contract change, then run "
-        "`uv run python -m app.cli export-openapi`"
+        f"`{UPDATE_ENV}=1 uv run pytest tests/test_openapi.py`"
     )
-
-
-def test_cli_check_detects_outdated_snapshot(tmp_path: Path) -> None:
-    target = tmp_path / "v1.json"
-    assert main(["export-openapi", "--output", str(target), "--check"]) == 1
-    assert main(["export-openapi", "--output", str(target)]) == 0
-    assert main(["export-openapi", "--output", str(target), "--check"]) == 0
 
 
 async def test_openapi_is_served_outside_production(app: FastAPI) -> None:

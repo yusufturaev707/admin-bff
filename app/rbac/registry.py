@@ -1,8 +1,7 @@
 """Permission registry: every permission that exists, declared in code.
 
-The registry is the source of truth. `cli sync-permissions` copies it to the
-`permissions` table, and the startup check refuses routes that require a
-permission missing from it.
+The registry is the source of truth: the startup check refuses routes that
+require a permission missing from it.
 """
 
 from collections.abc import Iterable, Iterator

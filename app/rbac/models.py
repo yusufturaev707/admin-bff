@@ -27,8 +27,9 @@ class Role(Base):
 
 
 class Permission(Base):
-    """Catalogue of declared permissions, copied from the registry by
-    `cli sync-permissions` (the registry in code stays the source of truth)."""
+    """Catalogue of declared permissions. The registry in code is the source of
+    truth; nothing copies it here since the CLI (`sync-permissions`) was
+    removed on 2026-11-23."""
 
     __tablename__ = "permissions"
 

@@ -1,4 +1,4 @@
-"""Chain verification (`cli verify-audit`) and retention (`cli audit-retention`).
+"""Chain verification and retention of the audit log.
 
 Verification walks the whole remaining chain in `id` order and checks, for
 every record:

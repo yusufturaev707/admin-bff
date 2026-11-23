@@ -34,11 +34,6 @@ set +a
 APP_ENV=production CREDENTIALS_DIRECTORY="$CREDENTIALS" \
     "$APP_DIR/.venv/bin/alembic" upgrade head
 
-echo "==> sync-permissions"
-# Koddagi permission registry DB'ga ko'chiriladi (yangi tizim ulanganda ham).
-APP_ENV=production CREDENTIALS_DIRECTORY="$CREDENTIALS" \
-    "$APP_DIR/.venv/bin/python" -m app.cli sync-permissions
-
 echo "==> systemctl reload admin-bff"
 systemctl reload admin-bff
 

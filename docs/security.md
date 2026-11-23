@@ -33,8 +33,9 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
   - o'z rollarini, kirish usullarini va holatini o'zgartira
     olmaydi;
   - o'zi a'zo bo'lgan rolni tahrirlay olmaydi.
-- **Superadmin.** `superadmin` tizim roli (`*:*:*`) faqat CLI orqali beriladi.
-  U API orqali tahrirlanmaydi va o'chirilmaydi. Oxirgi faol superadminni
+- **Superadmin.** `superadmin` tizim roli (`*:*:*`) API orqali berilmaydi.
+  CLI egasining qarori bilan (2026-11-23) olib tashlangan, shuning uchun uni
+  beradigan vosita hozircha yo'q. Rol API orqali tahrirlanmaydi va o'chirilmaydi. Oxirgi faol superadminni
   bloklab ham, rolidan ayirib ham bo'lmaydi.
 - **TOTP va step-up yo'q.** Egasi 2026-11-23 da TOTP'ni koddan ham, bazadan
   ham olib tashlashga qaror qildi (migratsiya 0004). Kirish bir qadamda:
@@ -63,9 +64,7 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 - logout va parol almashtirish;
 - adminlar va rollardagi har bir o'zgarish, `before` va `after` bilan;
 - ruxsatsiz har bir urinish (`rbac.denied`, 403);
-- audit eksporti va zanjir tekshiruvi;
-- CLI buyruqlari: actor `cli`, `details.os_user`da buyruqni kim bajargani
-  (`sudo` bilan bo'lsa, `SUDO_USER`).
+- audit eksporti.
 
 Servis o'zi yozuv qoldirmagan so'rovlar uchun ham yozuv bor. Har bir POST,
 PUT, PATCH, DELETE va har bir 403 uchun `http.request` yoziladi. Unda metod,
@@ -100,9 +99,10 @@ Himoya to'rt qatlamdan iborat:
    - Yozuvlar `pg_advisory_xact_lock` ostida ketma-ket yoziladi.
    - Yozuv vaqti zanjir bo'ylab kamaymaydi: server soati orqaga ketsa ham,
      yangi yozuv oldingisining vaqtini oladi.
-   - `verify-audit` zanjirni har kuni tekshiradi (systemd timer). Bitta
-     yozuv o'zgartirilsa, o'chirilsa, orasiga qo'shilsa, vaqti orqaga surilsa
-     yoki id takrorlansa, u xato beradi.
+   - `app/audit/verify.py` zanjirni tekshiradi. Bitta yozuv o'zgartirilsa,
+     o'chirilsa, orasiga qo'shilsa, vaqti orqaga surilsa yoki id takrorlansa,
+     u xato beradi. CLI va systemd timer olib tashlangani uchun (2026-11-23)
+     tekshiruv hozircha avtomatik ishga tushmaydi.
 4. **Nusxa.** Har bir yozuv id va hash bilan `audit` logger'iga ham yoziladi
    (journald). DB'ga yozib bo'lmasa, log'da `stored: false` yozuvi qoladi.
 
@@ -111,17 +111,21 @@ Himoya to'rt qatlamdan iborat:
 | Holat | Nima qilinadi |
 | --- | --- |
 | Owner yoki superuser trigger'ni o'chirib, butun zanjirni qaytadan hisoblab yozadi | DB ichidan buni aniqlab bo'lmaydi. Faqat tashqi nusxa bilan solishtirib bilinadi. TODO(owner): journald yozuvlarini boshqa serverga (syslog yoki Loki) yuborish kerak |
-| Zanjir oxiridagi yozuvlar kesib tashlanadi | `verify-audit` buni ko'rmaydi. U oxirgi `id` va `hash`ni chiqaradi, ularni journald'dagi oxirgi `audit` yozuvi bilan solishtiring |
+| Zanjir oxiridagi yozuvlar kesib tashlanadi | Zanjir tekshiruvi buni ko'rmaydi. U oxirgi `id` va `hash`ni qaytaradi, ularni journald'dagi oxirgi `audit` yozuvi bilan solishtiring |
 | Ilova credential'lari bilan to'g'ri hash'li soxta yozuv qo'shiladi | Zanjir mavjud yozuvlarni himoya qiladi, yangi yozuvni emas. Ilova roli yozuvchi bo'lgani uchun bu cheklov tabiiy. Credential'lar faqat systemd orqali beriladi |
 | Amal bajarilgan, lekin audit yozuvi DB'ga tushmagan (masalan, DB shu orada uzilgan) | Amal va uning audit yozuvi bitta tranzaksiyada emas. Bunday holatda so'rov `500` bilan tugaydi va journald'da `stored: false` yozuvi qoladi |
 
 ### Saqlash muddati
 
 - **Jadval.** `audit_log` oylar bo'yicha bo'lingan (`audit_log_yYYYYmMM`).
-- **Har kuni** soat 03:30 da `admin-bff-audit-retention.timer` ikki ishni
+- **Retention.** `app/audit/verify.py`dagi `apply_retention` ikki ishni
   bajaradi:
   - keyingi oy partition'ini oldindan yaratadi;
   - to'liq 90 kundan (`AUDIT_RETENTION_DAYS`) eski oylarni o'chiradi.
+
+  Uni har kuni ishga tushirgan CLI va systemd timer egasining qarori bilan
+  (2026-11-23) olib tashlangan. Hozircha eski partition'lar o'chirilmaydi,
+  joriy oy partition'ini esa yozuvchi o'zi yaratadi.
 - **Anchor.** O'chirishdan oldin har bir oyning oxirgi yozuvi (id, vaqt va
   hash) `audit_anchors`ga yoziladi. Keyin zanjir eng yangi anchor'dan
   tekshiriladi.
