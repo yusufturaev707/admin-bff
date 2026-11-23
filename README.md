@@ -28,8 +28,8 @@ uv sync                      # .venv yaratadi va dependency'larni o'rnatadi
 cp .env.example .env         # DB/Redis manzillari, DB_PASSWORD, kalitlar
 ```
 
-`.env`da `TOTP_ENC_KEY` va `PINFL_HMAC_KEY` bo'lishi shart. Ular 32 baytli
-tasodifiy kalitlar (base64), yaratish buyrug'i `.env.example`da yozilgan.
+`.env`da `PINFL_HMAC_KEY` bo'lishi shart. U 32 baytli tasodifiy kalit
+(base64), yaratish buyrug'i `.env.example`da yozilgan.
 PostgreSQL'da `DB_USER` role'i bo'lishi kerak: `CREATEDB` huquqi bilan, chunki
 testlar o'zlarining vaqtinchalik bazasini yaratadi.
 
@@ -49,8 +49,10 @@ uv run python -m app.cli create-superadmin --username admin # parol so'raladi
 uv run uvicorn --factory app.main:create_app --reload --port 8000
 ```
 
-Birinchi kirishda admin TOTP'ni ulaydi va parolini almashtiradi
-(`docs/frontend.md`, "Birinchi kirish").
+Birinchi kirishda admin parolini almashtiradi (`docs/frontend.md`, "Birinchi
+kirish"). `git pull`dan keyin har safar `uv run alembic upgrade head` va
+`uv run python -m app.cli sync-permissions` bajariladi: baza eskirgan bo'lsa,
+ilova ishga tushmaydi.
 
 Tekshirish:
 
@@ -134,8 +136,6 @@ mavjud bo'lsa) `.env` umuman o'qilmaydi.
 | `SESSION_IDLE_TIMEOUT_S`, `SESSION_ABSOLUTE_TIMEOUT_S` | `1800`, `43200` | sessiya: 30 daqiqa harakatsizlik, 12 soat jami |
 | `SESSION_REQUESTS_PER_MINUTE` | `300` | bitta sessiyadan daqiqasiga so'rovlar soni, oshsa `429` |
 | `ARGON2_TIME_COST`, `ARGON2_MEMORY_COST_KIB`, `ARGON2_PARALLELISM` | `3`, `65536`, `4` | production'da kamida m=19 MiB, t=2 |
-| `TOTP_ISSUER` | `UZBMB Admin` | autentifikator ilovasida ko'rinadigan nom |
-| `TOTP_REQUIRED` | `true` | `false`: kirish faqat parol bilan, step-up so'ralmaydi. Hozir hamma joyda `false` (egasining qarori, `docs/security.md`) |
 | `ONEID_ENABLED` | `false` | OneID shablon, client hali yozilmagan (`app/auth/oneid.py`) |
 
 Secret'lar production'da faqat systemd `LoadCredential=` orqali beriladi. Kodga,
@@ -144,7 +144,6 @@ testga va repo'ga yozilmaydi. Ular:
 - `db_password` va `redis_password`;
 - `db_owner_password`: faqat `deploy.sh` migratsiyalar uchun o'qiydi, servisga
   berilmaydi;
-- `totp_enc_key`: TOTP secret'larini AES-GCM bilan shifrlash kaliti;
 - `pinfl_hmac_key`: OneID'da PINFL bo'yicha qidirish kaliti;
 - keyingi bosqichlarda `jwt_private_key` va `oneid_client_secret`.
 
@@ -220,8 +219,6 @@ uv run python -m app.cli create-superadmin --username <login>   # parol interakt
 uv run python -m app.cli create-superadmin --username <login> --existing  # mavjudini superadmin qilish
 uv run python -m app.cli sync-permissions                       # har deploy'da (deploy.sh)
 uv run python -m app.cli unlock-login --username <login> [--ip <ip>]
-uv run python -m app.cli reencrypt-totp                          # TOTP_ENC_KEY rotatsiyasidan keyin
-uv run python -m app.cli reset-totp --username <login>           # yoki --all --yes (kalit yo'qolsa)
 uv run python -m app.cli verify-audit                            # audit hash zanjirini tekshirish
 uv run python -m app.cli audit-retention                         # har kuni (systemd timer)
 ```

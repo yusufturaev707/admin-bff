@@ -7,14 +7,11 @@ Frontend faqat BFF API bilan ishlaydi.
 - **Kirish.** Development'da ikkalasi ham login'siz ochiladi. Production'da
   `admin:api:docs` ruxsati kerak: avval adminkaga kiring, keyin shu brauzerda
   API domenidagi `/api/v1/docs`ni oching.
-- **Swagger'dan ishlash (development).** Sahifa tepasidagi panelga login,
-  parol va TOTP kodni kiritib "Kirish"ni bosing. Shundan keyin "Try it out"
-  barcha endpoint'larda ishlaydi, `X-CSRF-Token`ni sahifaning o'zi qo'shadi.
-  - "Step-up" tugmasi TOTP kodni qayta yuboradi: `x-step-up` endpoint'lari
-    uchun 5 daqiqa amal qiladi.
-  - Birinchi kirishda panel qolgan qadamlarni ko'rsatadi. Ular
-    `/auth/totp/enroll`, `/auth/totp/confirm` va `/auth/password` orqali
-    Swagger'ning o'zida bajariladi.
+- **Swagger'dan ishlash (development).** Sahifa tepasidagi panelga login va
+  parolni kiritib "Kirish"ni bosing. Shundan keyin "Try it out" barcha
+  endpoint'larda ishlaydi, `X-CSRF-Token`ni sahifaning o'zi qo'shadi.
+  - Birinchi kirishda panel "password_change" qadamini ko'rsatadi: parolni
+    `POST /auth/password` orqali Swagger'ning o'zida almashtiring.
   - Sahifani `http://localhost:8000` yoki HTTPS orqali oching. Boshqa
     `http://` manzilda (masalan, LAN IP orqali) brauzer `Secure` cookie'ni
     saqlamaydi va kirish ishlamaydi.
@@ -24,8 +21,7 @@ Frontend faqat BFF API bilan ishlaydi.
 - **Har bir endpoint'da:**
   - `security`: `session` cookie kerakmi va yozish so'rovida `csrf` sarlavhasi;
   - `x-permissions`: kerakli permission (menyu va tugmalarni shunga qarab
-    yashiring);
-  - `x-step-up: true`: TOTP qayta so'raladi.
+    yashiring).
 - **Client.** Sxemadan `openapi-typescript` yoki `orval` bilan generatsiya
   qiling.
 
@@ -58,63 +54,36 @@ bo'ladi, uni ham ko'rsating.
 
 ## Login va parol bilan kirish
 
-> Hozir TOTP o'chirilgan (`TOTP_REQUIRED=false`), production'da ham. Unda
-> `POST /auth/login` javobi darhol `mfa_required: false` bo'ladi va sessiya
-> ochiladi, step-up ham so'ralmaydi. Frontend ikkala holatni ham
-> qo'llab-quvvatlashi kerak: TOTP keyinchalik yoqiladi.
+Kirish bir qadamda bo'ladi: login va parol (yoki OneID). TOTP yo'q.
 
-1. Login va parol yuboriladi:
+```http
+POST /api/v1/auth/login
+{"username": "operator_toshkent", "password": "..."}
+```
 
-   ```http
-   POST /api/v1/auth/login
-   {"username": "operator_toshkent", "password": "..."}
-   ```
-
-   Javob `200 {"mfa_required": true, "mfa_token": "..."}`. Keyingi qadam TOTP
-   kod. `mfa_token` 5 daqiqa amal qiladi va faqat bir marta ishlatiladi.
-2. TOTP kod yuboriladi:
-
-   ```http
-   POST /api/v1/auth/mfa
-   {"mfa_token": "...", "code": "123456"}
-   ```
-
-   Telefon yo'qolgan bo'lsa, `code` o'rniga `{"recovery_code": "ABCD-EFGH-..."}`
-   yuboriladi. Javob
-   `200 {"csrf_token": "...", "setup_required": false, "pending": []}`, sessiya
-   cookie'si o'rnatiladi.
+Javob `200 {"csrf_token": "...", "setup_required": false, "pending": []}`.
+Sessiya cookie'si shu javobda o'rnatiladi.
 
 Xatolar:
 
 | Holat | Javob |
 | --- | --- |
 | Login yoki parol noto'g'ri | `401 not_authenticated`. Login topilmasa ham, parol noto'g'ri bo'lsa ham xabar bir xil |
-| Kod noto'g'ri | `422 validation_error`, `details.fields[0].type = "invalid_code"`. Foydalanuvchi MFA sahifasida qoladi |
-| `mfa_token` eskirgan yoki ishlatilgan (5 marta noto'g'ri kod kiritilsa ham shunday bo'ladi) | `401 session_expired`. Login sahifasiga qayting |
 | Juda ko'p xato urinish | `429 rate_limited`. `Retry-After` sarlavhasi necha soniya kutishni aytadi |
 
 ## Birinchi kirish
 
-Yangi admin birinchi marta kirganda TOTP'ni ulaydi va parolini almashtiradi.
+Yangi admin birinchi marta kirganda vaqtinchalik parolini almashtiradi.
 
 1. `POST /auth/login` javobi
-   `{"mfa_required": false, "setup_required": true, "pending": ["totp_enrollment", "password_change"], "csrf_token": "..."}`
-   bo'ladi va cheklangan sessiya ochiladi. Bu sessiyada faqat
-   `/auth/totp/*`, `/auth/password`, `/auth/session` va `/auth/logout`
-   ishlaydi. Boshqa endpoint'lar
-   `403 forbidden` qaytaradi va `details.pending`da qolgan qadamlarni ko'rsatadi.
-2. `POST /auth/totp/enroll` chaqiriladi. Javob `{"secret": "...", "otpauth_uri": "otpauth://totp/..."}`.
-   `otpauth_uri`ni QR kod qilib chizing. QR kutubxonasi lokal bo'lsin, chunki
-   ichki tarmoqda CDN ishlamaydi. Kod faqat shu oynada, bir marta ko'rsatiladi.
-3. Admin ilovadagi kodni kiritadi: `POST /auth/totp/confirm {"code": "123456"}`.
-   Javobda `recovery_codes` (10 ta kod) va **yangi** `csrf_token` keladi, chunki
-   sessiya ID'si almashadi. Recovery kodlarni bir marta ko'rsatib, adminga
-   saqlab qo'yishni ayting.
-4. Parol almashtiriladi: `POST /auth/password`
-   `{"old_password": "...", "new_password": "...", "code": "123456"}`.
-   Ilovadagi kod yangilanguncha kuting (30 soniyagacha), chunki 3-qadamdagi
-   kodni qayta ishlatib bo'lmaydi. Javob `204`. Parol almashganda **barcha**
-   sessiyalar tugaydi, shuning uchun foydalanuvchini login sahifasiga qaytaring.
+   `{"setup_required": true, "pending": ["password_change"], "csrf_token": "..."}`
+   bo'ladi va cheklangan sessiya ochiladi. Bu sessiyada faqat `/auth/*`
+   endpoint'lari ishlaydi. Boshqalari `403 forbidden` qaytaradi va
+   `details.pending`da qolgan qadamni ko'rsatadi.
+2. Parol almashtiriladi: `POST /auth/password`
+   `{"old_password": "...", "new_password": "..."}`. Javob `204`. Parol
+   almashganda **barcha** sessiyalar tugaydi, shuning uchun foydalanuvchini
+   login sahifasiga qaytaring.
 
 Yangi parol qoidalari:
 
@@ -129,8 +98,7 @@ Xato bo'lsa, `422` javobidagi `details.fields[0].type` qiymatlari:
 - `password_contains_username`;
 - `password_too_common`;
 - `password_reused`;
-- `invalid_password` (joriy parol noto'g'ri);
-- `invalid_code`.
+- `invalid_password` (joriy parol noto'g'ri).
 
 ## OneID orqali kirish
 
@@ -139,14 +107,10 @@ qaytaradi. Frontend uchun oqim tayyor:
 
 1. "OneID orqali kirish" tugmasi bosilganda brauzer API'ga o'tadi:
    `window.location.href = API + "/api/v1/auth/oneid/start"`. Bu `fetch` emas.
-2. OneID'dan keyin BFF brauzerni frontendning quyidagi sahifalaridan biriga
-   qaytaradi:
-   - `/login/mfa#mfa_token=...`: TOTP sahifasi. Token URL fragment'ida keladi,
-     ya'ni serverga va log'larga tushmaydi. Uni o'qing, darhol
-     `history.replaceState` bilan manzildan olib tashlang, keyin parol bilan
-     kirishdagi kabi `POST /auth/mfa`ga yuboring.
-   - `/login/setup`: birinchi kirish. Sessiya cookie'si o'rnatilgan bo'ladi.
-     `csrf_token`ni `GET /auth/session`dan oling.
+2. OneID'dan keyin BFF sessiya cookie'sini o'rnatadi va brauzerni frontendning
+   quyidagi sahifalaridan biriga qaytaradi:
+   - `/`: kirish tugadi. `csrf_token`ni `GET /auth/session`dan oling.
+   - `/login/setup`: birinchi kirish, parolni almashtirish kerak.
    - `/login?error=oneid_failed`: kirib bo'lmadi. Sababi ko'rsatilmaydi.
      Admin OneID'ni superadmin biriktirgan hisob bilan ishlatishi kerak.
 
@@ -156,7 +120,6 @@ qaytaradi. Frontend uchun oqim tayyor:
   - `username`;
   - `auth_method`;
   - `expires_at`;
-  - `mfa_at`;
   - `pending`;
   - `csrf_token`.
 - Sessiya ikki holatda tugaydi:
@@ -169,16 +132,6 @@ qaytaradi. Frontend uchun oqim tayyor:
   `DELETE /auth/sessions/{id}` sessiyani tugatadi. Joriy sessiya tugatilsa, bu
   logout bilan bir xil.
 - `POST /auth/logout` javobi `204`.
-
-## Step-up (xavfli amallar)
-
-Xavfli amal oldidan admin TOTP kodni qayta kiritishi kerak bo'lishi mumkin:
-
-1. Amal `401 step_up_required` qaytaradi.
-2. TOTP oynasini oching va kodni yuboring: `POST /auth/step-up {"code": "123456"}`.
-3. Javob `200` bo'lsa, amalni qaytadan yuboring.
-
-Step-up 5 daqiqa amal qiladi.
 
 ## Ruxsatlar va menyu: `GET /api/v1/me`
 
@@ -193,9 +146,7 @@ qarab quradi:
   "roles": [{"id": "...", "name": "auditor"}],
   "permissions": ["admin:users:read", "faceid:*:read"],
   "scopes": [{"type": "region", "value": "*"}],
-  "totp_enabled": true,
-  "must_change_password": false,
-  "mfa_at": "2026-11-23T09:15:02Z"
+  "must_change_password": false
 }
 ```
 
@@ -216,18 +167,13 @@ qarab quradi:
 | `GET /admin/users`, `GET /admin/users/{id}` | `admin:users:read` |
 | `POST /admin/users`, `PATCH /admin/users/{id}` | `admin:users:write` |
 | `PUT /admin/users/{id}/roles`, `PUT /admin/users/{id}/scopes` | `admin:users:write` |
-| `POST /admin/users/{id}/reset-password`, `.../reset-totp`, `.../unlock` | `admin:users:security` |
+| `POST /admin/users/{id}/reset-password`, `.../unlock` | `admin:users:security` |
 | `GET /admin/roles`, `GET /admin/roles/{id}`, `GET /admin/permissions` | `admin:roles:read` |
 | `POST /admin/roles`, `PATCH /admin/roles/{id}`, `DELETE /admin/roles/{id}` | `admin:roles:write` |
 
-- **Step-up.** Barcha o'zgartiruvchi so'rovlar (`POST`, `PATCH`, `PUT`,
-  `DELETE`) uchun TOTP so'nggi 5 daqiqa ichida kiritilgan bo'lishi kerak.
-  Aks holda javob `401 step_up_required` bo'ladi. Shunda TOTP oynasini oching,
-  kodni `POST /auth/step-up`ga yuboring va so'rovni qaytadan yuboring.
 - **Vaqtinchalik parol.** Admin yaratilganda yoki parol tiklanganda javobda
   `initial_password` keladi. U faqat shu javobda, bir marta keladi: ko'rsating
-  va saqlamang. Yangi admin birinchi kirishda TOTP'ni ulaydi va parolni
-  almashtiradi.
+  va saqlamang. Yangi admin birinchi kirishda parolni almashtiradi.
 - **Rol tahrirlash oynasi.** Ro'yxatni `GET /admin/permissions` beradi. Unda
   permission'lar tizimlar bo'yicha guruhlangan va har birining o'zbekcha
   tavsifi bor.
@@ -251,7 +197,7 @@ olmaydi. 90 kundan eski yozuvlar oylik bo'laklar bilan o'chiriladi.
 | Endpoint | Ruxsat |
 | --- | --- |
 | `GET /audit` | `audit:logs:read` |
-| `POST /audit/export` | `audit:logs:export` va step-up |
+| `POST /audit/export` | `audit:logs:export` |
 
 **Ro'yxat.** `GET /api/v1/audit?action=auth.login&outcome=denied&limit=50`.
 Yangi yozuvlar birinchi keladi.
@@ -293,7 +239,7 @@ Yangi yozuvlar birinchi keladi.
 - **Xatoni tekshirish.** Foydalanuvchi ko'rsatgan `request_id` bo'yicha
   `?request_id=...` shu so'rovning yozuvlarini topadi.
 - **Ko'rsatish.** `action` qiymatlari: `auth.login`, `auth.logout`,
-  `auth.step_up`, `auth.lockout`, `admin.user.create`, `admin.role.update`,
+  `auth.lockout`, `admin.user.create`, `admin.role.update`,
   `rbac.denied` (ruxsatsiz urinish), `http.request` va boshqalar.
   `http.request` xizmat o'zi yozmagan har bir yozish so'rovi va har bir `403`
   uchun yoziladi: unda `status_code` va `details.method`, `details.path`
@@ -311,8 +257,6 @@ X-CSRF-Token: ...
 - Bu POST so'rov, shuning uchun oddiy `<a href>` ishlamaydi. `fetch` bilan
   yuboring, `response.blob()`ni oling va `URL.createObjectURL` orqali
   yuklab bering. Fayl nomi `Content-Disposition` sarlavhasida keladi.
-- TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak, aks holda
-  `401 step_up_required`.
 - Bir soatda ko'pi bilan 5 ta eksport. Oshsa `429 rate_limited` va
   `Retry-After`.
 - Bitta faylda ko'pi bilan 100 000 yozuv. Ko'p bo'lsa
@@ -343,11 +287,10 @@ haqida ham batafsil yoziladi.
 | --- | --- | --- |
 | `not_authenticated` | 401 | login sahifasi |
 | `session_expired` | 401 | login sahifasi |
-| `step_up_required` | 401 | TOTP oynasi, keyin amalni qayta yuborish |
 | `csrf_failed` | 403 | `csrf_token`ni `GET /auth/session`dan yangilab qayta urinish |
 | `forbidden` | 403 | `details.pending` bo'lsa, sozlash sahifasi; aks holda "ruxsat yo'q" |
 | `validation_error` | 422 | `details.fields` bo'yicha formadagi maydon xatolari |
-| `conflict` | 409 | masalan, TOTP allaqachon ulangan |
+| `conflict` | 409 | masalan, rol adminlarga biriktirilgan bo'lsa uni o'chirish |
 | `rate_limited` | 429 | `Retry-After` soniya kutish. Bitta sessiyadan daqiqasiga 300 tadan ortiq so'rov ham shunday javob oladi: so'rovlarni tsiklda takrorlamang |
 | `method_not_allowed` | 405 | client'dagi xato: endpoint bu HTTP metodni qabul qilmaydi, `Allow` sarlavhasiga qarang |
 | `internal_error` | 500 | "Ichki xatolik" va `request_id`ni ko'rsatish |

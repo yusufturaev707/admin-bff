@@ -9,10 +9,10 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 | --- | --- |
 | Parolni taxmin qilish, brute force | Argon2id. Username bo'yicha 5 ta xato urinishdan keyin 15 daqiqa blok, IP bo'yicha 10 daqiqada 20 xatodan keyin 30 daqiqa. Nginx'da ham `limit_req` bor |
 | Hisob mavjudligini aniqlash (user enumeration) | Login topilmasa ham soxta hash tekshiriladi va xabar bir xil chiqadi. Mavjud bo'lmagan login ham xuddi shunday bloklanadi |
-| Parol o'g'irlanishi | TOTP talab qilinadi, OneID'dan keyin ham. Kodni qayta ishlatib bo'lmaydi. **Hozir o'chiq** (pastda) |
+| Parol o'g'irlanishi | **Ikkinchi faktor yo'q** (TOTP egasining qarori bilan olib tashlangan, pastda). Parol o'g'irlansa, hisobni bloklash qoidalari, Argon2id va Nginx IP allowlist himoya qiladi |
 | Sessiyani o'g'irlash yoki unga o'z ID'sini qo'yish | Sessiya serverda saqlanadi. Cookie `__Host-` prefiksli, `HttpOnly`, `Secure`, `SameSite=Strict`. Har login'da yangi ID beriladi. 30 daqiqa harakatsizlik yoki 12 soatdan keyin sessiya tugaydi |
 | CSRF | `Origin` aynan frontend bilan solishtiriladi, `X-CSRF-Token` sessiyadagi token bilan `compare_digest` orqali tekshiriladi |
-| DB yoki DB backup sizib chiqishi | Parol va recovery code Argon2id hash ko'rinishida. TOTP secret AES-256-GCM bilan shifrlangan, kalit DB'da emas. PINFL faqat HMAC hash sifatida saqlanadi |
+| DB yoki DB backup sizib chiqishi | Parol Argon2id hash ko'rinishida. PINFL faqat HMAC hash sifatida saqlanadi, kalit DB'da emas |
 | Log orqali sizib chiqish | Parol, kod, token va cookie log'ga yozilmaydi. PII maskalanadi. Mavjud bo'lmagan login audit'ga ochiq yozilmaydi, chunki ba'zan unga parol kiritib yuboriladi |
 | Izni yashirish (audit yozuvini o'zgartirish yoki o'chirish) | Ilova roli audit'ga faqat qo'sha oladi. Trigger'lar UPDATE, DELETE va TRUNCATE'ni hamma uchun rad etadi. Hash zanjiri va journald'dagi nusxa qolgan o'zgarishlarni ko'rsatadi (pastda) |
 
@@ -22,7 +22,7 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
   holatda umuman ishga tushmaydi:
   - route'da guard yo'q va u public ro'yxatda ham emas. Guard'lar:
     `require(...)`, `get_principal`, sessiya tekshiruvi. Public ro'yxat: login,
-    mfa, OneID, `/health`, `/ready`;
+    OneID, `/health`, `/ready`;
   - route registry'da e'lon qilinmagan permission'ni talab qiladi.
 - **Route doim aniq permission talab qiladi.** Wildcard (`faceid:*:read`)
   faqat rol orqali adminga beriladi.
@@ -36,26 +36,21 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 - **Superadmin.** `superadmin` tizim roli (`*:*:*`) faqat CLI orqali beriladi.
   U API orqali tahrirlanmaydi va o'chirilmaydi. Oxirgi faol superadminni
   bloklab ham, rolidan ayirib ham bo'lmaydi.
-- **TOTP hozir o'chiq.** Egasi 2026-11-23 da TOTP'ni production'da ham
-  o'chirishga qaror qildi (`TOTP_REQUIRED=false`). Shu sababli kirish faqat
-  parol bilan, step-up esa so'ralmaydi. Parol o'g'irlansa, hisobni faqat
-  quyidagilar himoya qiladi:
+- **TOTP va step-up yo'q.** Egasi 2026-11-23 da TOTP'ni koddan ham, bazadan
+  ham olib tashlashga qaror qildi (migratsiya 0004). Kirish bir qadamda:
+  login va parol yoki OneID. Step-up ham TOTP'ga tayangani uchun u ham olib
+  tashlandi: xavfli amallar oldidan qayta tasdiq so'ralmaydi. Parol
+  o'g'irlansa, hisobni faqat quyidagilar himoya qiladi:
   - bloklash qoidalari;
   - Argon2id;
   - Nginx IP allowlist (faqat bino ichki tarmog'i).
 
-  Servis ishga tushganda log'ga `totp_disabled` ogohlantirishi yoziladi, har
-  bir login audit yozuvida esa `details.totp_required: false` bo'ladi.
-  Yoqish uchun `TOTP_REQUIRED=true` qilinadi va servis qayta ishga
-  tushiriladi. TOTP ulanmagan adminlar keyingi kirishda uni ulaydi.
-- **Step-up.** Admin va rollardagi har bir o'zgarish TOTP so'nggi 5 daqiqa
-  ichida kiritilgan bo'lishini talab qiladi. Spetsifikatsiya buni faqat xavfli
-  amallar uchun talab qiladi, lekin bu endpoint'lar kim nima qila olishini
-  hal qiladi, shuning uchun xavfsizroq variant tanlandi.
+  Ikkinchi faktor kerak bo'lsa, u qaytadan yoziladi (git tarixida avvalgi
+  TOTP kodi bor).
 - **O'zgarish qachon kuchga kiradi.**
   - Rol tahrirlansa: uning a'zolarida keyingi so'rovdan boshlab
     (`perm_version`).
-  - Admin bloklansa, uning rollari, kirish usullari, paroli yoki TOTP'i
+  - Admin bloklansa, uning rollari, kirish usullari yoki paroli
     o'zgartirilsa: u adminning barcha sessiyalari tugaydi.
 - **Hududlar (scope).** Barcha adminlar bitta markaziy binoda ishlaydi,
   shuning uchun hozir hammasiga `*` beriladi. Mexanizm baribir ishlaydi:
@@ -67,7 +62,7 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 ### Nima yoziladi
 
 - login urinishlari: muvaffaqiyatli, rad etilgan va bloklangan;
-- logout, step-up, TOTP ulash, parol almashtirish;
+- logout va parol almashtirish;
 - adminlar va rollardagi har bir o'zgarish, `before` va `after` bilan;
 - ruxsatsiz har bir urinish (`rbac.denied`, 403);
 - audit eksporti va zanjir tekshiruvi;
@@ -147,7 +142,7 @@ Audit'ga yozishdan oldin log'dagi qoidalar qo'llanadi:
 - nomida `password`, `token`, `secret`, `otp` va shunga o'xshash so'z bor
   kalitlarning qiymati `[REDACTED]` bo'ladi.
 
-Eksportda TOTP qayta so'raladi va soatiga ko'pi bilan 5 ta eksport mumkin.
+Soatiga ko'pi bilan 5 ta eksport mumkin.
 CSV fayldagi `=`, `+`, `-` yoki `@` bilan boshlanadigan katakning oldiga `'`
 qo'yiladi. Shunda Excel uni formula sifatida bajarmaydi (CSV injection).
 
@@ -159,14 +154,13 @@ Kalitlar kodga, repo'ga, `.env`ga va DB backup'iga yozilmaydi.
 
 | Kalit | Vazifasi | Yo'qolsa | Oshkor bo'lsa |
 | --- | --- | --- | --- |
-| `totp_enc_key` | TOTP secret'larini shifrlaydi | barcha adminlar TOTP'ni qaytadan ulaydi | rotatsiya qilinadi (pastda) |
 | `pinfl_hmac_key` | OneID'da PINFL bo'yicha qidirish | barcha OneID bog'lanishlari qaytadan kiritiladi | rotatsiya qilinadi va PINFL'lar qaytadan biriktiriladi |
 | `db_password`, `redis_password` | ulanish | PostgreSQL yoki Redis'da yangisi o'rnatiladi | xuddi shunday |
 
 ### Zaxira nusxa
 
 Qaror: kalitlar DB backup'idan **alohida** saqlanadi. Shunda o'g'irlangan DB
-backup'i bilan TOTP secret'larini ochib bo'lmaydi.
+backup'i bilan PINFL hash'larini tekshirib bo'lmaydi.
 
 1. Kalit yaratilganda (yoki rotatsiyadan keyin) uning shifrlangan nusxasi
    olinadi:
@@ -183,55 +177,3 @@ backup'i bilan TOTP secret'larini ochib bo'lmaydi.
 4. Tiklash har yarim yilda bir marta staging'da sinab ko'riladi. Bu DB
    backup'ini oylik tiklash sinovi bilan birga qilinadi (11-bo'lim).
 5. Kim, qachon va nima uchun zaxira nusxadan foydalangani yozib boriladi.
-
-### `TOTP_ENC_KEY` rotatsiyasi
-
-Rotatsiya uch holatda qilinadi:
-
-- kalit oshkor bo'lganda yoki shunga shubha tug'ilganda;
-- kalitga kirish huquqi bo'lgan xodim ishdan ketganda;
-- boshqa hollarda yiliga bir marta.
-
-Rotatsiya vaqtida adminlar ishdan uzilmaydi.
-
-```bash
-cd /etc/admin-bff/credentials
-mv totp_enc_key totp_enc_key_previous
-(umask 077; head -c 32 /dev/urandom | base64 > totp_enc_key)
-# admin-bff.service'da: LoadCredential=totp_enc_key_previous:... qatorini oching
-systemctl daemon-reload && systemctl restart admin-bff
-sudo -u admin-bff ... python -m app.cli reencrypt-totp   # CREDENTIALS_DIRECTORY bilan, deploy.sh kabi
-# "ochib bo'lmadi: 0" bo'lsa:
-rm totp_enc_key_previous   # va LoadCredential qatorini yana yoping
-systemctl daemon-reload && systemctl restart admin-bff
-```
-
-Rotatsiyadan keyin zaxira nusxa yangilanadi.
-
-Texnik tafsilot: har bir shifrlangan qiymat ichida kalit identifikatori turadi
-(kalitning SHA-256 prefiksi, kalitning o'zi emas). Shu sababli rotatsiya
-davomida eski va yangi kalit bir vaqtda ishlaydi.
-
-### `TOTP_ENC_KEY` yo'qolsa
-
-Zaxira nusxa ham bo'lmasa:
-
-1. Yangi kalit yaratiladi va servis qayta ishga tushiriladi.
-2. `python -m app.cli reset-totp --all --yes` bajariladi. Barcha adminlarning
-   TOTP'i va recovery code'lari o'chadi, sessiyalari tugaydi.
-3. Adminlarga xabar beriladi. Keyingi kirishda ular parol (yoki OneID) bilan
-   kiradi va TOTP'ni qaytadan ulaydi.
-
-Bu vaqt oralig'ida kirish faqat bitta faktor (parol) bilan himoyalangan
-bo'ladi. Shuning uchun:
-
-- reset'dan keyin adminlar imkon qadar tezroq kirib, TOTP'ni ulashi kerak;
-- audit log'da `auth.totp.enroll` hodisalari kuzatib boriladi.
-
-Bitta admin telefonini yo'qotsa va recovery code'lari ham qolmagan bo'lsa,
-`reset-totp --username <login>` ishlatiladi. Keyinchalik buni superadmin
-adminkadan ham qila oladigan bo'ladi (2-bosqich).
-
-Kalit noto'g'ri sozlansa, TOTP tekshiruvi `500 internal_error` qaytaradi va
-log'ga `totp_secret_undecryptable` yoziladi. Bu adminning xato urinishi
-hisoblanmaydi. Tizim "fail closed" ishlaydi: kirishga ruxsat berilmaydi.

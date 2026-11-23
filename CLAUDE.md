@@ -78,9 +78,7 @@ Quyidagi to'qqizta qaror qat'iy. Ularni faqat egasi bilan kelishib o'zgartirish 
 | Real-time | SSE, Redis Streams. Voqealar uchun alohida Redis instansi, ACL bilan (10.1-bo'lim) |
 | Tizimlarga HTTP so'rov | httpx (AsyncClient) |
 | Parol hash | argon2-cffi (Argon2id) |
-| TOTP | pyotp |
 | Service JWT | PyJWT\[crypto\] (EdDSA, Ed25519) |
-| Shifrlash (TOTP secret) | cryptography (AES-GCM) |
 | Loglar | structlog (JSON), journald |
 | Metrikalar | prometheus-client |
 | Testlar | pytest, pytest-asyncio, respx. Lokal PostgreSQL va Redis'da alohida test DB ishlatiladi |
@@ -101,8 +99,8 @@ admin-bff/
     main.py                      # create_app(): routerlar, middleware, startup tekshiruvlari
     settings.py
     core/                        # db, redis, logging, errors, pagination, request_id, time
-    auth/                        # login, totp, sessions, csrf, AuthProvider
-    rbac/                        # permission registry, require(), scopes, step-up
+    auth/                        # login, sessions, csrf, AuthProvider
+    rbac/                        # permission registry, require(), scopes
     audit/                       # model, writer, hash chain, query API, retention
     service_auth/                # service JWT signer, JWKS
     events/                      # Redis Streams o'quvchi, SSE oqimi (10.1-bo'lim)
@@ -140,7 +138,7 @@ class SystemConnector(ABC):
 Asosiy bloklar:
 
 - **`ResourceSpec`** standart ob'ektni tasvirlaydi. Unda nomi, sarlavhasi, ustunlar, ruxsat etilgan filtr va saralash maydonlari, `pii=True` deb belgilangan maydonlar, list va read uchun permission'lar bo'ladi. Shu ta'rif asosida `generic.py` umumiy endpoint'larni yaratadi: `GET /api/v1/systems/{sys}/resources/{res}` va `GET .../{res}/{id}`. Standart ro'yxatlar uchun connector'da router yozish shart emas.
-- **`ActionSpec`** maxsus amalni tasvirlaydi (masalan, imtihon sessiyasini tugatish, yuzni qayta ro'yxatdan o'tkazish). Unda nomi, sarlavhasi, permission, kirish ma'lumotlari uchun Pydantic sxema, `dangerous` (step-up talab qilinadi) va `requires_approval` (ikkinchi admin tasdig'i) belgilari bo'ladi. Amal `POST /api/v1/systems/{sys}/actions/{action}` orqali chaqiriladi.
+- **`ActionSpec`** maxsus amalni tasvirlaydi (masalan, imtihon sessiyasini tugatish, yuzni qayta ro'yxatdan o'tkazish). Unda nomi, sarlavhasi, permission, kirish ma'lumotlari uchun Pydantic sxema, `dangerous` (`reason` majburiy, 7-bo'lim) va `requires_approval` (ikkinchi admin tasdig'i) belgilari bo'ladi. Amal `POST /api/v1/systems/{sys}/actions/{action}` orqali chaqiriladi.
 - **`ConnectorClient`** har bir tizim uchun bitta `httpx.AsyncClient` o'rami:
   - `base_url` yoki unix socket (`uds`) orqali ulanadi;
   - har bir so'rovga service JWT va `X-Request-ID` qo'shadi;
@@ -215,21 +213,18 @@ Har bir tizimga bir xil kontraktga mos `/internal/admin/v1/` API qo'shiladi. BFF
 
 SDK `pip install` orqali ichki git manzilidan yoki lokal yo'ldan o'rnatiladi.
 
-## 6. Autentifikatsiya: login, parol, TOTP, sessiya, CSRF
+## 6. Autentifikatsiya: login, parol, sessiya, CSRF
 
-Kirish ikki qadamdan iborat. Birinchi qadam ikki usuldan biri bilan bajariladi: username va parol, yoki fuqaroning OneID'si. Ikkinchi qadam TOTP kod. **Egasining qarori (2026-11-23): TOTP hozircha o'chiq, production'da ham (`TOTP_REQUIRED=false`).** Kirish faqat birinchi qadam bilan bajariladi (pastda, "TOTP"). Sessiya Redis'da saqlanadi, brauzer esa faqat HttpOnly cookie oladi.
+Kirish bir qadamdan iborat va ikki usuldan biri bilan bajariladi: username va parol, yoki fuqaroning OneID'si. **Egasining qarori (2026-11-23): TOTP (ikkinchi faktor) koddan ham, bazadan ham olib tashlandi** (migratsiya 0004). U bilan birga `mfa_token`, recovery code'lar va step-up ham olib tashlandi. Sessiya Redis'da saqlanadi, brauzer esa faqat HttpOnly cookie oladi.
 
 **Endpoint'lar:**
 
 | Endpoint | Vazifasi |
 | --- | --- |
-| `POST /api/v1/auth/login` | username va parolni qabul qiladi. Javob: `{"mfa_required": true, "mfa_token": "..."}`. `mfa_token` bir martalik, 5 daqiqa amal qiladi, Redis'da saqlanadi. TOTP o'chiq bo'lsa, sessiya darhol ochiladi (`mfa_required: false`, cookie va `csrf_token`) |
-| `POST /api/v1/auth/mfa` | `mfa_token` va TOTP kodni (yoki recovery code'ni) qabul qiladi. Sessiya cookie'sini o'rnatadi va body'da `csrf_token` qaytaradi |
+| `POST /api/v1/auth/login` | username va parolni qabul qiladi. Sessiya cookie'sini o'rnatadi va body'da `csrf_token`, `setup_required`, `pending` qaytaradi |
 | `POST /api/v1/auth/logout` | joriy sessiyani o'chiradi |
 | `GET /api/v1/auth/sessions`, `DELETE /api/v1/auth/sessions/{id}` | adminning o'z faol sessiyalari ro'yxati va ularni tugatish |
-| `POST /api/v1/auth/password` | parolni almashtiradi. Eski parol va TOTP kod talab qilinadi |
-| `POST /api/v1/auth/totp/enroll`, `POST /api/v1/auth/totp/confirm` | TOTP'ni ulash. Birinchi kirishda majburiy |
-| `POST /api/v1/auth/step-up` | TOTP kod qayta kiritiladi va sessiyadagi `mfa_at` yangilanadi |
+| `POST /api/v1/auth/password` | parolni almashtiradi. Eski parol talab qilinadi |
 | `GET /api/v1/auth/session` | joriy sessiya holati va `csrf_token`. Sahifa yangilanganda frontend tokenni shu yerdan qayta oladi |
 | `GET /api/v1/auth/oneid/start`, `GET /api/v1/auth/oneid/callback` | OneID orqali kirish (pastda) |
 
@@ -245,26 +240,10 @@ Kirish ikki qadamdan iborat. Birinchi qadam ikki usuldan biri bilan bajariladi: 
 - Bitta IP uchun 10 daqiqada 20 ta xato, keyin 30 daqiqa blok.
 - Har bir blok audit'ga yoziladi va alert yuboriladi. Blokni superadmin oldinroq ochishi mumkin.
 
-**TOTP:**
-
-- **Hozircha o'chiq** (egasining qarori, 2026-11-23, production'da ham). `TOTP_REQUIRED=false` bo'lganda:
-  - login'dan keyin darhol to'liq sessiya ochiladi;
-  - birinchi kirishda TOTP ulash talab qilinmaydi, faqat parol almashtiriladi;
-  - parol almashtirishda kod so'ralmaydi;
-  - step-up so'ralmaydi.
-
-  Kod va testlar saqlanadi. Yoqish uchun `TOTP_REQUIRED=true` qilinadi va servis qayta ishga tushiriladi. O'chiq paytida servis ishga tushishda `totp_disabled` ogohlantirishini yozadi, har bir login audit yozuvida `totp_required` bo'ladi. Pastdagi qoidalar TOTP yoqilganda amal qiladi.
-
-- `pyotp`, 6 xonali kod, 30 soniyalik oyna, `valid_window=1`.
-- Secret DB'da AES-GCM bilan shifrlab saqlanadi. Kalit (`TOTP_ENC_KEY`) servisga systemd credential sifatida beriladi (`LoadCredential=`, 11-bo'lim).
-- **Kodni qayta ishlatib bo'lmaydi.** Oxirgi qabul qilingan `timecode` saqlanadi va undan kichik yoki teng kod rad etiladi.
-- QR kod faqat ulash paytida bir marta ko'rsatiladi.
-- Admin 10 ta recovery code oladi. Ular Argon2 bilan hash qilinadi va har biri bir martalik.
-
 **Sessiya:**
 
 - ID `secrets.token_urlsafe(32)` bilan yaratiladi. Redis kaliti `sess:<sha256(id)>` ko'rinishida bo'ladi, ID'ning o'zi saqlanmaydi.
-- Sessiya ichida saqlanadi: `user_id`, `created_at`, `last_seen`, `mfa_at`, `ip`, `user_agent`, `csrf_token`, `perm_version`.
+- Sessiya ichida saqlanadi: `user_id`, `created_at`, `last_seen`, `ip`, `user_agent`, `csrf_token`, `perm_version`.
 - Idle timeout 30 daqiqa (sliding TTL), absolute timeout 12 soat.
 - Muvaffaqiyatli login'dan keyin har doim yangi ID beriladi (session fixation'ga qarshi).
 - Cookie: `__Host-admin_session`, `HttpOnly; Secure; SameSite=Strict; Path=/`.
@@ -277,21 +256,20 @@ Kirish ikki qadamdan iborat. Birinchi qadam ikki usuldan biri bilan bajariladi: 
 
 **Birinchi kirish va bootstrap:**
 
-- Yangi admin yaratilganda `must_change_password=true` bo'ladi va TOTP ulanmagan holatda turadi. Bu holatda faqat `/auth/password` va `/auth/totp/*` endpoint'lari ishlaydi.
+- Yangi admin yaratilganda `must_change_password=true` bo'ladi. Parol almashtirilguncha faqat `/auth/*` endpoint'lari ishlaydi.
 - Birinchi superadmin faqat `uv run python -m app.cli create-superadmin` buyrug'i bilan yaratiladi (parol interaktiv so'raladi). HTTP orqali yaratish imkoni yo'q.
-- `AuthProvider` interfeysi: `authenticate()`, `verify_second_factor()`. Implementatsiyalari `LocalAuthProvider` (login + parol) va `OneIdAuthProvider`.
+- `AuthProvider` interfeysi: `authenticate()`. Implementatsiyalari `LocalAuthProvider` (login + parol) va `OneIdAuthProvider`.
 
 **OneID (fuqaroning yagona identifikatsiyasi):**
 
 - Hozircha shablon. Kirish oqimi, sozlamalar va testlar tayyor, OneID bilan gaplashadigan HTTP client esa yozilmagan (`app/auth/oneid.py`, `TODO(owner)`). U OneID integratsiya hujjatlari olingandan keyin yoziladi. Shungacha `ONEID_ENABLED=false`. Client yozilmagan holda OneID yoqilsa, ilova ishga tushmaydi.
 - OneID adminlikni bermaydi, u faqat odam kimligini tasdiqlaydi. Kirish faqat superadmin oldindan yaratgan, faol va PINFL'i biriktirilgan admin uchun ishlaydi. Avtomatik ro'yxatdan o'tish yo'q.
 - PINFL ochiq holda saqlanmaydi: qidirish uchun uning HMAC-SHA256 hash'i (`PINFL_HMAC_KEY`), ko'rsatish uchun maskalangan ko'rinishi saqlanadi.
-- OneID'dan keyin ham TOTP so'raladi.
 - Har bir admin uchun ruxsat etilgan usullarni (`password`, `oneid`) superadmin belgilaydi (`admin_users.auth_methods`).
-- `state` bir martalik va brauzerga cookie orqali bog'langan. `code`ni BFF server tomonida almashtiradi. `mfa_token` frontendga URL fragment'ida (`#mfa_token=`) beriladi.
+- `state` bir martalik va brauzerga cookie orqali bog'langan. `code`ni BFF server tomonida almashtiradi, sessiya cookie'sini o'rnatib frontendga qaytaradi.
 - OneID yoqilganda BFF serveridan OneID serverlariga chiqish ochiladi (systemd `IPAddressAllow`, `TODO(owner)`).
 
-## 7. Avtorizatsiya: RBAC, scope, step-up, deny-by-default
+## 7. Avtorizatsiya: RBAC, scope, deny-by-default
 
 Har bir endpoint aniq bir permission talab qiladi. Permission'siz route topilsa, ilova ishga tushmaydi.
 
@@ -302,15 +280,15 @@ Har bir endpoint aniq bir permission talab qiladi. Permission'siz route topilsa,
 
 **Admin DB jadvallari:** `admin_users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `user_scopes` (`scope_type`: region, zone yoki branch, va `scope_value`), `recovery_codes`, `audit_log`, `pending_actions`.
 
-**Principal** joriy admin haqidagi ma'lumot: `user_id`, `username`, `permissions` (frozenset), `scopes`, `mfa_at`, `session_id`.
+**Principal** joriy admin haqidagi ma'lumot: `user_id`, `username`, `permissions` (frozenset), `scopes`, `session_id`.
 
 - Principal Redis'da keshlanadi. Rol o'zgarganda `perm_version` bittaga oshiriladi va keyingi so'rovda principal qayta yuklanadi. Bunga qo'shimcha ravishda 6-bo'limdagi sessiya o'chirish ham ishlaydi.
-- Dependency'lar: `require("perm")`, `require_any(...)`, `require_recent_mfa(max_age=300)`, `require_authenticated` (masalan, `/me` uchun). FastAPI ularni bitta so'rov ichida keshlaydi.
+- Dependency'lar: `require("perm")`, `require_any(...)`, `require_authenticated` (masalan, `/me` uchun). FastAPI ularni bitta so'rov ichida keshlaydi.
 
 **Deny-by-default:**
 
 - Ishga tushishda barcha `APIRoute`'lar tekshiriladi. `require*` dependency'si yo'q va public ro'yxatda ham bo'lmagan route topilsa, `RuntimeError` ko'tariladi. Bu holat test bilan ham tekshiriladi.
-- Public ro'yxat: `/api/v1/auth/login`, `/api/v1/auth/mfa`, `/api/v1/auth/oneid/start`, `/api/v1/auth/oneid/callback`, `/health`, `/ready`.
+- Public ro'yxat: `/api/v1/auth/login`, `/api/v1/auth/oneid/start`, `/api/v1/auth/oneid/callback`, `/health`, `/ready`.
 
 **Row-level tekshiruv (BOLA'ga qarshi):**
 
@@ -318,11 +296,7 @@ Har bir endpoint aniq bir permission talab qiladi. Permission'siz route topilsa,
 - Detail endpoint'larida ob'ekt admin scope'idan tashqarida bo'lsa, 404 qaytariladi. 403 emas, chunki ob'ekt mavjudligi oshkor bo'lmasligi kerak.
 - Scope berilmagan admin hech narsani ko'rmaydi. Barcha hududlarga ruxsat faqat maxsus `*` scope aniq berilganda bo'ladi.
 
-**Step-up MFA:**
-
-- Qaysi amallar uchun: `ActionSpec.dangerous=True` deb belgilanganlar, o'chirish, bulk amallar, parol reset, PII eksport.
-- Ular `require_recent_mfa(300)` bilan himoyalanadi. Shart bajarilmasa, 401 va `{"code": "step_up_required"}` qaytadi. Frontend shunda TOTP oynasini ochadi va kodni `/auth/step-up`'ga yuboradi.
-- TOTP o'chiq bo'lsa (`TOTP_REQUIRED=false`, 6-bo'lim), step-up so'ralmaydi.
+**Step-up:** TOTP bilan birga olib tashlandi (6-bo'lim, egasining qarori). Xavfli amallar oldidan qayta tasdiq so'ralmaydi. `ActionSpec.dangerous=True` hozircha `reason` majburiyligini bildiradi. Qayta tasdiq kerak bo'lsa (masalan, parolni qayta kiritish), egasi bilan kelishiladi.
 
 **4-ko'z prinsipi (2-navbat):**
 
@@ -400,7 +374,7 @@ Audit'ga har bir yozish amali, har bir login urinishi va shaxsiy ma'lumotni har 
 **Nima yoziladi:**
 
 - login: muvaffaqiyatli, muvaffaqiyatsiz va bloklangan urinishlar;
-- logout va step-up;
+- logout va parol almashtirish;
 - har bir POST, PUT, PATCH va DELETE so'rovi;
 - har bir 403 (rad etilgan) so'rov;
 - PII'ni ochib ko'rish va eksport;
@@ -409,7 +383,7 @@ Audit'ga har bir yozish amali, har bir login urinishi va shaxsiy ma'lumotni har 
 
 Oddiy GET ro'yxatlar audit'ga yozilmaydi, ular faqat request log'ga tushadi.
 
-**Audit API.** `GET /api/v1/audit` admin, tizim, amal, natija va sana bo'yicha filtrlarni qo'llab-quvvatlaydi va cursor pagination ishlatadi. Unga `audit:logs:read` permission'i kerak. CSV eksport uchun `audit:logs:export` va step-up talab qilinadi.
+**Audit API.** `GET /api/v1/audit` admin, tizim, amal, natija va sana bo'yicha filtrlarni qo'llab-quvvatlaydi va cursor pagination ishlatadi. Unga `audit:logs:read` permission'i kerak. CSV eksport uchun `audit:logs:export` talab qilinadi.
 
 **Saqlash muddati: 90 kun.**
 
@@ -428,7 +402,7 @@ Oddiy GET ro'yxatlar audit'ga yozilmaydi, ular faqat request log'ga tushadi.
   - ochiq URL berilmaydi;
   - ro'yxatlarda rasm chiqmaydi.
 - **Yuz embedding'lari** hech qachon frontendga chiqarilmaydi.
-- **Loglarda PII bo'lmaydi.** structlog processor maskalaydi. Parol, TOTP kod, token va cookie log'ga umuman tushmaydi.
+- **Loglarda PII bo'lmaydi.** structlog processor maskalaydi. Parol, token va cookie log'ga umuman tushmaydi.
 - **Saqlash joyi.** Ma'lumotlar O'zbekiston hududidagi serverlarda turadi. DB backup'lari shifrlanadi.
 
 ## 10. Frontend uchun API standarti
@@ -456,13 +430,13 @@ Frontend dasturchi faqat `/api/v1/openapi.json` sxemasi bilan ishlaydi. Shuning 
 {"error": {"code": "forbidden", "message": "Bu amal uchun ruxsat yo'q", "request_id": "...", "details": {}}}
 ```
 
-Xato kodlari: `not_authenticated`, `session_expired`, `forbidden`, `step_up_required`, `csrf_failed`, `not_found`, `method_not_allowed` (405), `validation_error`, `conflict`, `rate_limited`, `system_unavailable`, `upstream_error`, `internal_error`. Tizim qaytargan xato matni frontendga o'zgarmasdan uzatilmaydi.
+Xato kodlari: `not_authenticated`, `session_expired`, `forbidden`, `csrf_failed`, `not_found`, `method_not_allowed` (405), `validation_error`, `conflict`, `rate_limited`, `system_unavailable`, `upstream_error`, `internal_error`. Tizim qaytargan xato matni frontendga o'zgarmasdan uzatilmaydi.
 
 **Meta endpoint'lar.** Frontend menyu, jadval va formalarni shular asosida o'zi quradi:
 
 - `GET /api/v1/me` qaytaradi:
   - admin ma'lumotlari, permission'lari va scope'lari;
-  - `must_change_password` va TOTP holati.
+  - `must_change_password`.
 - `GET /api/v1/meta/systems` adminning permission'iga qarab filtrlangan tizimlar ro'yxatini qaytaradi:
   - `id`, `display_name`, `health`;
   - `resources`: ustunlar, filtrlar, saralash, PII maydonlar;
@@ -507,7 +481,7 @@ Adminkadan desktop clientlarning (SafeBrowser, proctoring client, Face-ID deskto
 - **Client tomoni.** Clientlar `min_version` va config'ni o'z backend'idan oladi. Buning uchun mavjud health/heartbeat so'rovi kengaytiriladi.
 - **Xavfsizlik:**
   - Installer fayllar kod imzosi bilan imzolanadi. Client faylni yuklab olgach `sha256` va imzoni tekshiradi, mos kelmasa o'rnatmaydi.
-  - `publish-release`, `set-min-version` va config o'zgarishi bir vaqtda minglab kompyuterga ta'sir qiladi. Shuning uchun ular `dangerous=True` (step-up) va `requires_approval=True` (ikkinchi admin tasdig'i) deb belgilanadi.
+  - `publish-release`, `set-min-version` va config o'zgarishi bir vaqtda minglab kompyuterga ta'sir qiladi. Shuning uchun ular `dangerous=True` va `requires_approval=True` (ikkinchi admin tasdig'i) deb belgilanadi.
   - Har bir o'zgarish `before`/`after` bilan audit'ga yoziladi.
   - Tavsiya (egasi tasdiqlasin): aktiv imtihon sessiyasi bor kompyuterlarda majburiy yangilanish smena tugaguncha kechiktiriladi.
 - **BFF'dagi umumiy sahifa.** `GET /api/v1/clients` barcha tizimlar bo'yicha qaysi versiya nechta kompyuterda ishlayotganini va eskirgan clientlarni ko'rsatadi.
@@ -591,7 +565,7 @@ Bitta tizim ishlamay qolsa ham adminka ishlashda davom etadi. Tashqariga faqat N
   - `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, `MemoryMax`, `Restart=on-failure`;
   - `systemd-analyze security admin-bff` iloji boricha past ball ko'rsatishi kerak.
 - **Secrets:**
-  - `TOTP_ENC_KEY`, JWT private key, DB va Redis parollari `LoadCredential=` orqali beriladi;
+  - `PINFL_HMAC_KEY`, JWT private key, DB va Redis parollari `LoadCredential=` orqali beriladi;
   - ilova ularni `$CREDENTIALS_DIRECTORY`'dan o'qiydi (pydantic-settings `secrets_dir`);
   - manba fayllar `/etc/admin-bff/credentials/`'da, `root:root 0600` huquqi bilan saqlanadi;
   - `.env` faqat development uchun, repo'da faqat `.env.example` turadi.
@@ -623,10 +597,9 @@ Ish 10 ta bosqichda bajariladi. Har bir bosqich testlari va CI yashil bo'lgandan
 **Majburiy testlar:**
 
 - **Auth:**
-  - to'g'ri login va TOTP;
+  - to'g'ri login;
   - noto'g'ri parol va mavjud bo'lmagan user uchun bir xil xabar;
   - 5 ta xatodan keyin bloklash;
-  - TOTP kodni qayta ishlatib bo'lmaydi, recovery code bir martalik;
   - login'dan keyin sessiya ID o'zgaradi;
   - idle va absolute timeout ishlaydi;
   - parol o'zgarganda barcha sessiyalar o'chadi.
@@ -639,7 +612,6 @@ Ish 10 ta bosqichda bajariladi. Har bir bosqich testlari va CI yashil bo'lgandan
   - rol o'zgarishi keyingi so'rovdayoq kuchga kiradi;
   - superadmin yaratgan rol permission'lari to'g'ri qo'llanadi.
 - **BOLA:** boshqa hudud ob'ektini so'raganda 404 qaytadi.
-- **Step-up:** `mfa_at` eski bo'lsa, `step_up_required` qaytadi.
 - **Service JWT va SDK:**
   - `aud`, `exp` va `scope` to'g'ri qo'yiladi;
   - SDK boshqa `aud`'li va muddati o'tgan tokenni rad etadi.
@@ -662,7 +634,7 @@ Ish 10 ta bosqichda bajariladi. Har bir bosqich testlari va CI yashil bo'lgandan
   - `Last-Event-ID` bilan o'tkazib yuborilgan voqealar qayta beriladi;
   - sessiya tugaganda oqim yopiladi.
 - **Desktop clientlar:**
-  - `publish-release` step-up va ikkinchi admin tasdig'isiz bajarilmaydi;
+  - `publish-release` ikkinchi admin tasdig'isiz bajarilmaydi;
   - config rollback ishlaydi.
 
 **Coverage:** `auth`, `rbac`, `audit` va `service_auth` modullarida kamida 90%, umumiy kamida 80%.
@@ -672,7 +644,7 @@ Ish 10 ta bosqichda bajariladi. Har bir bosqich testlari va CI yashil bo'lgandan
 | Bosqich | Natija | Qabul mezoni |
 | --- | --- | --- |
 | 0. Skelet | pyproject, papkalar tuzilishi, settings, logging, xato formati, `/health`, `deploy/` (systemd unit, Nginx config namunalari), CI | lokal ishga tushadi, `/health` 200 qaytaradi, CI yashil |
-| 1. Auth | adminlar jadvali, Argon2, TOTP, sessiya, CSRF, bloklash, `create-superadmin` | 6-bo'limning testlari o'tadi |
+| 1. Auth | adminlar jadvali, Argon2, sessiya, CSRF, bloklash, `create-superadmin` | 6-bo'limning testlari o'tadi |
 | 2. RBAC | permission registry, rollarni adminkada yaratish, scope'lar, `require()`, deny-by-default, adminlar/rollar/permission'lar API, `/me` | 7-bo'limning testlari o'tadi |
 | 3. Audit | jadval, trigger, hash zanjiri, 90 kunlik retention, audit API | 9-bo'limning testlari o'tadi |
 | 4. Service auth va SDK | JWT signer, JWKS, rotatsiya, `sdk/` (DRF + FastAPI) | SDK testlari o'tadi |
@@ -687,7 +659,7 @@ Ish 10 ta bosqichda bajariladi. Har bir bosqich testlari va CI yashil bo'lgandan
 - Barcha testlar va CI yashil.
 - OpenAPI to'liq va misollar bilan yozilgan.
 - `docs/` papkasida uchta hujjat bor:
-  - `docs/frontend.md`: auth jarayoni, CSRF, step-up, xato kodlari, meta endpoint'lar;
+  - `docs/frontend.md`: auth jarayoni, CSRF, xato kodlari, meta endpoint'lar;
   - `docs/adding-a-system.md`: yangi tizim qo'shish tartibi;
   - `docs/security.md`: qisqa threat model va qabul qilingan qarorlar.
 - O'zbek tilidagi README'da ishga tushirish, deploy va CLI buyruqlari yozilgan.
@@ -706,7 +678,7 @@ Bu savollarga javobni agentga ishni boshlashdan oldin bering. Javobi yo'q savoll
 - [x] Rollar: qanday lavozimlar bor (masalan, viloyat operatori, markaz admini, auditor) va har biri nima qila oladi.
 
   Javob: rollarni superadmin adminkaning o'zida yaratadi (7-bo'lim).
-- [ ] Xavfli amallar ro'yxati: qaysilari uchun step-up, qaysilari uchun ikkinchi admin tasdig'i kerak.
+- [ ] Xavfli amallar ro'yxati: qaysilari uchun ikkinchi admin tasdig'i kerak (step-up TOTP bilan birga olib tashlangan).
 
   Javob hali yo'q. Hozircha 7- va 10.1-bo'limlardagi sukut bo'yicha ro'yxat ishlatiladi.
 - [x] Domen: adminka va API qaysi domenda bo'ladi. Kirish IP allowlist orqalimi yoki VPN orqali.
