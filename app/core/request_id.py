@@ -6,6 +6,8 @@
   error handlers can put it into the error body) and returned in the response.
 * One access log line per request: method, path (without the query string, it
   may contain personal data), status, duration. `/health` is not logged.
+* Prometheus: count and duration per route template (app.core.metrics);
+  `/metrics` itself is not counted.
 
 Written as a pure ASGI middleware (not `BaseHTTPMiddleware`) so the handler runs
 in the same task and context variables propagate correctly.
@@ -20,6 +22,7 @@ from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.logging import get_logger
+from app.core.metrics import METRICS_PATH, UNMATCHED_ROUTE, observe_request
 
 REQUEST_ID_HEADER = "X-Request-ID"
 _REQUEST_ID_HEADER_RAW = REQUEST_ID_HEADER.lower().encode("latin-1")
@@ -79,13 +82,18 @@ class RequestContextMiddleware:
             await self.app(scope, receive, send_with_request_id)
         finally:
             path: str = scope.get("path", "")
+            duration_s = time.perf_counter() - started
+            if path != METRICS_PATH:
+                # The router puts the matched route into the scope.
+                route = getattr(scope.get("route"), "path", None) or UNMATCHED_ROUTE
+                observe_request(str(scope.get("method")), route, status_code, duration_s)
             if path not in _NOT_LOGGED_PATHS:
                 access_logger.info(
                     "request",
                     method=scope.get("method"),
                     path=path,
                     status=status_code,
-                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                    duration_ms=round(duration_s * 1000, 2),
                 )
             # The context is intentionally not cleared here: an unhandled
             # exception is logged by ServerErrorMiddleware (outside this

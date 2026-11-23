@@ -30,6 +30,7 @@ from app.core.db import create_engine, create_sessionmaker, ping_database
 from app.core.db_privileges import audit_privilege_problems
 from app.core.errors import install_exception_handlers
 from app.core.logging import configure_logging, get_logger
+from app.core.metrics import METRICS_PATH, MetricsAuditListener, metrics_endpoint
 from app.core.redis import create_redis, ping_redis
 from app.core.request_id import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.routes import validate_routes
@@ -113,7 +114,9 @@ def _lifespan(
         try:
             await check_audit_privileges(engine, settings)
             db = create_sessionmaker(engine)
-            audit = DbAuditSink(db, clock=clock, listeners=audit_listeners)
+            audit = DbAuditSink(
+                db, clock=clock, listeners=[MetricsAuditListener(), *audit_listeners]
+            )
             auth_service = build_auth_service(
                 settings, db, redis, clock=clock, audit=audit, oneid_client=oneid
             )
@@ -210,6 +213,8 @@ def create_app(
     app.add_middleware(RequestContextMiddleware)
 
     app.include_router(health.router)
+    # Not an API route (no guard, not in OpenAPI): Nginx serves it on 127.0.0.1 only.
+    app.add_route(METRICS_PATH, metrics_endpoint, include_in_schema=False)
     app.include_router(docs.router)
     app.mount(docs.STATIC_URL, docs.static_files(), name="swagger-ui")
     app.include_router(auth_router.router)

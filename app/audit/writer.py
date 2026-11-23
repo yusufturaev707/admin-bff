@@ -27,6 +27,7 @@ from app.audit.context import mark_written
 from app.audit.models import AUDIT_CHAIN_LOCK_KEY, AuditRecord
 from app.audit.sink import AuditEvent, AuditSink, LogAuditSink, StoredAudit
 from app.core.logging import get_logger
+from app.core.metrics import AUDIT_WRITE_FAILURES
 from app.core.time import Clock
 
 logger = get_logger(__name__)
@@ -67,6 +68,7 @@ class DbAuditSink:
         try:
             row, stored = await self._append(event)
         except Exception as exc:
+            AUDIT_WRITE_FAILURES.inc()
             self._log.log(
                 AuditRow.from_event(event, self._clock()).canonical_fields(),
                 error=type(exc).__name__,

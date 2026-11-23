@@ -41,6 +41,8 @@ WorkingDirectory=/opt/admin-bff
 # Oddiy (secret bo'lmagan) sozlamalar.
 EnvironmentFile=/etc/admin-bff/admin-bff.env
 Environment=APP_ENV=production PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# Prometheus multiprocess fayllari (tmpfs, deploy/gunicorn.conf.py tozalaydi).
+Environment=PROMETHEUS_MULTIPROC_DIR=/run/admin-bff/prometheus
 
 # Secret'lar: ilova ularni $CREDENTIALS_DIRECTORY'dan o'qiydi (pydantic-settings
 # secrets_dir). Fayl nomi = sozlama nomi. db_owner_password bu yerda yo'q va

@@ -6,16 +6,18 @@ group (section 11). Nothing listens on a TCP port.
 
 import multiprocessing
 import os
+import shutil
+from pathlib import Path
+from typing import Any
+
+from prometheus_client import multiprocess
 
 bind = "unix:/run/admin-bff/bff.sock"
 # Socket mode 0660 (umask 007): owner admin-bff, group admin-bff; Nginx's user
 # (www-data) is a member of the admin-bff group.
 umask = 0o007
 
-# TODO(owner): uvicorn.workers is deprecated upstream in favour of the
-# `uvicorn-worker` package (same UvicornWorker class); switching needs approval
-# for the new dependency.
-worker_class = "uvicorn.workers.UvicornWorker"
+worker_class = "uvicorn_worker.UvicornWorker"
 workers = int(os.environ.get("GUNICORN_WORKERS", min(multiprocessing.cpu_count() * 2, 8)))
 
 # HUP (systemctl reload) restarts workers gracefully with the new code; this
@@ -36,6 +38,23 @@ worker_tmp_dir = "/run/admin-bff"
 accesslog = None
 errorlog = "-"
 loglevel = "info"
+
+# Prometheus multiprocess mode (app/core/metrics.py): every worker writes its
+# counters to files in PROMETHEUS_MULTIPROC_DIR (admin-bff.service, on tmpfs).
+
+
+def on_starting(server: Any) -> None:
+    """Old workers' files would add stale counts: start empty."""
+    directory = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if directory:
+        shutil.rmtree(directory, ignore_errors=True)
+        Path(directory).mkdir(mode=0o700, parents=True)
+
+
+def child_exit(server: Any, worker: Any) -> None:
+    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+        multiprocess.mark_process_dead(worker.pid)  # type: ignore[no-untyped-call]
+
 
 limit_request_line = 8190
 limit_request_fields = 100
