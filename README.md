@@ -48,16 +48,18 @@ ogohlantiradi. Production'da ikkita rol shart (pastda, "PostgreSQL rollari").
 
 ```bash
 uv run alembic upgrade head                                 # jadvallar
+uv run python -m scripts.create_superadmin --username admin  # parol so'raladi
 uv run uvicorn --factory app.main:create_app --reload --port 8000
 ```
 
 `git pull`dan keyin har safar `uv run alembic upgrade head` bajariladi: baza
 eskirgan bo'lsa, ilova ishga tushmaydi.
 
-**Diqqat.** CLI (`app/cli.py`) egasining qarori bilan (2026-11-23) olib
-tashlangan. Shuning uchun birinchi superadminni yaratadigan buyruq hozircha
-yo'q, HTTP orqali yaratish ham yo'q (6-bo'lim). Yangi admin birinchi kirishda
-parolini almashtiradi (`docs/frontend.md`, "Birinchi kirish").
+Birinchi superadmin faqat shu skript bilan yaratiladi, HTTP orqali yaratish
+yo'q (6-bo'lim). Parol terminalda ikki marta so'raladi, argument yoki
+environment orqali berilmaydi. Yangi admin birinchi kirishda parolini
+almashtiradi (`docs/frontend.md`, "Birinchi kirish"). Serverda ishga tushirish:
+pastda, "Superadmin".
 
 Tekshirish:
 
@@ -96,7 +98,7 @@ tushiriladi:
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy --strict app/ tests/
+uv run mypy --strict app/ tests/ scripts/
 uv run bandit -q -r app
 uv run pip-audit
 ```
@@ -162,6 +164,24 @@ Fayllar `deploy/` papkasida:
 | `deploy.sh` | `git pull`, `uv sync --frozen`, `alembic upgrade head`, `systemctl reload` |
 
 Birinchi o'rnatish tartibi `admin-bff.service` faylining boshida yozilgan.
+
+### Superadmin
+
+Birinchi superadmin migratsiyalardan keyin serverda yaratiladi. Skript
+servisning sozlamalari va credential'lari bilan root sifatida ishlaydi (xuddi
+`deploy.sh` kabi):
+
+```bash
+sudo sh -c 'set -a; . /etc/admin-bff/admin-bff.env; set +a; cd /opt/admin-bff &&
+  APP_ENV=production CREDENTIALS_DIRECTORY=/etc/admin-bff/credentials \
+  .venv/bin/python -m scripts.create_superadmin --username <login>'
+```
+
+- `superadmin` tizim roli (`*:*:*`) bo'lmasa, skript uni yaratadi.
+- Yaratish audit'ga yoziladi: actor `script`, `details.os_user`da buyruqni
+  kim bajargani.
+- Barcha superadminlar bloklanib qolsa ham, shu skript bilan yangi superadmin
+  yaratiladi.
 
 ### Metrikalar
 

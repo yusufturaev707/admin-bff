@@ -34,9 +34,12 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
     olmaydi;
   - o'zi a'zo bo'lgan rolni tahrirlay olmaydi.
 - **Superadmin.** `superadmin` tizim roli (`*:*:*`) API orqali berilmaydi.
-  CLI egasining qarori bilan (2026-11-23) olib tashlangan, shuning uchun uni
-  beradigan vosita hozircha yo'q. Rol API orqali tahrirlanmaydi va o'chirilmaydi. Oxirgi faol superadminni
-  bloklab ham, rolidan ayirib ham bo'lmaydi.
+  Superadmin faqat serverda, root huquqi bilan
+  `scripts/create_superadmin.py` orqali yaratiladi va bu audit'ga yoziladi
+  (README, "Superadmin"). Rol API orqali tahrirlanmaydi va o'chirilmaydi.
+  Oxirgi faol superadminni bloklab ham, rolidan ayirib ham bo'lmaydi. Bunday
+  o'zgarishlar advisory lock ostida ketma-ket bajariladi, shuning uchun ikki
+  superadmin bir vaqtda bir-birini bloklay olmaydi.
 - **TOTP va step-up yo'q.** Egasi 2026-11-23 da TOTP'ni koddan ham, bazadan
   ham olib tashlashga qaror qildi (migratsiya 0004). Kirish bir qadamda:
   login va parol yoki OneID. Step-up ham TOTP'ga tayangani uchun u ham olib

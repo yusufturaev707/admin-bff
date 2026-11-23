@@ -32,7 +32,7 @@ Ish qoidalari:
 - Har bir bosqich oxirida quyidagilar o'tishi shart: `pytest`, `ruff check`, `ruff format --check`, `mypy --strict app/`. Keyin to'xta va hisobot ber. Hisobot to'rt qismdan iborat: Qilindi, Qabul qilingan qarorlar, Ochiq savollar, Keyingi qadam.
 - Commit'lar kichik bo'lsin, har biri bitta mantiqiy o'zgarishdan iborat.
 - Shubha tug'ilsa, xavfsizroq variantni tanla va sababini izohda yoz.
-- **Egasining qarori (2026-11-23): `app/cli.py` va CI olib tashlandi** (GitHub Actions, GitLab CI, `scripts/ci.sh`, `scripts/check_coverage.py`, audit retention systemd timer'i). Hujjatda tilga olingan `app.cli` buyruqlari (`create-superadmin`, `sync-permissions`, `verify-audit`, `audit-retention`, `rotate-keys`) va "CI tekshiruvlari" hozircha amalda yo'q. Ularni qayta qo'shishdan oldin egasidan so'ra. Tekshiruvlar qo'lda ishga tushiriladi. OpenAPI snapshot'i `UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi.py` bilan yangilanadi. GitHub'da faqat `master` branch bor.
+- **Egasining qarori (2026-11-23): `app/cli.py` va CI olib tashlandi** (GitHub Actions, GitLab CI, `scripts/ci.sh`, `scripts/check_coverage.py`, audit retention systemd timer'i). Hujjatda tilga olingan `app.cli` buyruqlari (`sync-permissions`, `verify-audit`, `audit-retention`, `rotate-keys`) va "CI tekshiruvlari" hozircha amalda yo'q. Ularni qayta qo'shishdan oldin egasidan so'ra. Egasining so'roviga ko'ra faqat `create-superadmin` o'rniga alohida skript bor: `uv run python -m scripts.create_superadmin --username <login>` (6-bo'lim). Tekshiruvlar qo'lda ishga tushiriladi. OpenAPI snapshot'i `UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi.py` bilan yangilanadi. GitHub'da faqat `master` branch bor.
 
 ## 2. Mavjud tizimlar konteksti
 
@@ -258,7 +258,7 @@ Kirish bir qadamdan iborat va ikki usuldan biri bilan bajariladi: username va pa
 **Birinchi kirish va bootstrap:**
 
 - Yangi admin yaratilganda `must_change_password=true` bo'ladi. Parol almashtirilguncha faqat `/auth/*` endpoint'lari ishlaydi.
-- Birinchi superadmin faqat `uv run python -m app.cli create-superadmin` buyrug'i bilan yaratiladi (parol interaktiv so'raladi). HTTP orqali yaratish imkoni yo'q. **CLI 2026-11-23 da olib tashlangan (1-bo'lim), shuning uchun hozircha birinchi superadminni yaratish vositasi yo'q.**
+- Birinchi superadmin faqat `uv run python -m app.cli create-superadmin` buyrug'i bilan yaratiladi (parol interaktiv so'raladi). HTTP orqali yaratish imkoni yo'q. **CLI 2026-11-23 da olib tashlangan (1-bo'lim). Uning o'rniga `uv run python -m scripts.create_superadmin --username <login>` ishlatiladi: parol interaktiv so'raladi va yaratish audit'ga yoziladi.**
 - `AuthProvider` interfeysi: `authenticate()`. Implementatsiyalari `LocalAuthProvider` (login + parol) va `OneIdAuthProvider`.
 
 **OneID (fuqaroning yagona identifikatsiyasi):**
