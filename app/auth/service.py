@@ -540,7 +540,9 @@ def build_auth_service(
         db=db,
         passwords=passwords,
         second_factor=SecondFactorVerifier(
-            box=SecretBox(settings.totp_key()), passwords=passwords, clock=clock
+            box=SecretBox(settings.totp_key(), previous=settings.totp_previous_keys()),
+            passwords=passwords,
+            clock=clock,
         ),
         sessions=SessionStore(
             redis,

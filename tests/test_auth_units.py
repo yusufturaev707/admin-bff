@@ -134,3 +134,20 @@ def test_redis_key_prefix_is_validated(clean_env: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, redis_key_prefix="bad prefix*")
     assert Settings(_env_file=None, redis_key_prefix="dev:admin-bff:").redis_key_prefix
+
+
+def test_secret_box_key_rotation() -> None:
+    old, new = secrets.token_bytes(32), secrets.token_bytes(32)
+    owner = uuid.uuid4().bytes
+    old_blob = SecretBox(old).encrypt(b"JBSWY3DPEHPK3PXP", aad=owner)
+
+    ring = SecretBox(new, previous=[old])
+    assert ring.decrypt(old_blob, aad=owner) == b"JBSWY3DPEHPK3PXP"
+    assert not ring.is_current(old_blob)
+    new_blob = ring.encrypt(b"JBSWY3DPEHPK3PXP", aad=owner)
+    assert ring.is_current(new_blob)
+
+    # After the rotation the old key is removed: only re-encrypted blobs open.
+    assert SecretBox(new).decrypt(new_blob, aad=owner) == b"JBSWY3DPEHPK3PXP"
+    with pytest.raises(DecryptionError, match="not configured"):
+        SecretBox(new).decrypt(old_blob, aad=owner)

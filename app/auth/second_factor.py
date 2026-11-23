@@ -11,10 +11,14 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import totp
-from app.auth.crypto import SecretBox
+from app.auth.crypto import DecryptionError, SecretBox
 from app.auth.models import AdminUser, RecoveryCode
 from app.auth.passwords import PasswordService
+from app.core.errors import AppError, ErrorCode
+from app.core.logging import get_logger
 from app.core.time import Clock
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +54,13 @@ class SecondFactorVerifier:
     async def _verify_totp(self, db: AsyncSession, user: AdminUser, code: str) -> bool:
         if not user.totp_enabled or user.totp_secret_enc is None:
             return False
-        secret = self.decrypt_secret(user.id, user.totp_secret_enc)
+        try:
+            secret = self.decrypt_secret(user.id, user.totp_secret_enc)
+        except DecryptionError as exc:
+            # A server fault (wrong or missing TOTP_ENC_KEY), not a wrong code:
+            # fail closed with 500 and do not count it against the admin.
+            logger.error("totp_secret_undecryptable", user_id=str(user.id))
+            raise AppError(ErrorCode.INTERNAL_ERROR) from exc
         step = totp.match_timecode(secret, code, self._clock())
         if step is None:
             return False

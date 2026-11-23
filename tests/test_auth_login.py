@@ -18,7 +18,7 @@ from tests.auth_helpers import (
     totp_code,
     wrong_code,
 )
-from tests.conftest import AuditRecorder, FakeClock, Services
+from tests.conftest import AuditRecorder, FakeClock, Services, random_key
 from tests.helpers import app_client, extra_client
 
 
@@ -286,5 +286,25 @@ async def test_password_hash_is_upgraded_on_login(
         finally:
             await conn.close()
         assert ",t=2," in stored
+    finally:
+        await services.reset()
+
+
+async def test_undecryptable_totp_secret_is_a_server_error(
+    settings: Settings, clock: FakeClock, audit: AuditRecorder, services: Services
+) -> None:
+    admin = await create_admin(settings, clock)
+    misconfigured = settings.model_copy(update={"totp_enc_key": random_key()})
+    app = create_app(misconfigured, clock=clock, audit_sink=audit)
+    try:
+        async with app_client(app) as client:
+            token = (await start_login(client, admin)).json()["mfa_token"]
+            response = await client.post(
+                f"{AUTH}/mfa", json={"mfa_token": token, "code": totp_code(admin, clock)}
+            )
+        # Fails closed, and is not counted as the admin's wrong code.
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "internal_error"
+        assert not audit.find("auth.login", AuditOutcome.DENIED)
     finally:
         await services.reset()

@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     # AES-256-GCM key for TOTP secrets: base64 of 32 random bytes.
     # Production: systemd credential `totp_enc_key`.
     totp_enc_key: SecretStr | None = None
+    # Only while rotating the key (docs/security.md): the old key, used for
+    # decryption until `cli reencrypt-totp` has finished. Credential
+    # `totp_enc_key_previous`.
+    totp_enc_key_previous: SecretStr | None = None
     # HMAC-SHA256 key for looking up an admin by PINFL (OneID): base64, >= 32 bytes.
     # Production: systemd credential `pinfl_hmac_key`.
     pinfl_hmac_key: SecretStr | None = None
@@ -119,6 +123,11 @@ class Settings(BaseSettings):
             raise RuntimeError("TOTP_ENC_KEY is not configured (systemd credential totp_enc_key)")
         return decode_key(self.totp_enc_key, min_bytes=32, max_bytes=32)
 
+    def totp_previous_keys(self) -> list[bytes]:
+        if self.totp_enc_key_previous is None:
+            return []
+        return [decode_key(self.totp_enc_key_previous, min_bytes=32, max_bytes=32)]
+
     def pinfl_key(self) -> bytes:
         if self.pinfl_hmac_key is None:
             raise RuntimeError(
@@ -126,7 +135,7 @@ class Settings(BaseSettings):
             )
         return decode_key(self.pinfl_hmac_key, min_bytes=32)
 
-    @field_validator("totp_enc_key")
+    @field_validator("totp_enc_key", "totp_enc_key_previous")
     @classmethod
     def _validate_totp_key(cls, value: SecretStr | None) -> SecretStr | None:
         if value is not None:
