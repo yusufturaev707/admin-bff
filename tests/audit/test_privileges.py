@@ -20,11 +20,11 @@ from app.core.db import database_url
 from app.core.db_privileges import audit_privilege_problems, grant_app_privileges
 from app.main import create_app
 from app.settings import Settings
-from tests.audit_helpers import event, month_partition, records, sessions, write_events
-from tests.auth_helpers import login
 from tests.conftest import AuditRecorder, FakeClock, Services
-from tests.helpers import app_client
-from tests.rbac_helpers import make_superadmin
+from tests.helpers.audit import event, month_partition, records, sessions, write_events
+from tests.helpers.auth import login
+from tests.helpers.client import app_client
+from tests.helpers.rbac import make_superadmin
 
 
 @dataclass(frozen=True)

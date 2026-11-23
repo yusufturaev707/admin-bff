@@ -5,7 +5,7 @@ import httpx
 from fastapi import FastAPI
 
 from app.api.health import ReadinessCheck, get_readiness_checks
-from tests.helpers import app_client
+from tests.helpers.client import app_client
 
 
 async def _ok() -> None:

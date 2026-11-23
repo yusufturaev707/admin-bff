@@ -10,8 +10,8 @@ from sqlalchemy.pool import NullPool
 from app.core.db import create_sessionmaker, database_url
 from app.rbac.models import SUPERADMIN_ROLE, Role, RolePermission, UserRole
 from app.settings import Settings
-from tests.auth_helpers import Admin, create_admin
 from tests.conftest import FakeClock
+from tests.helpers.auth import Admin, create_admin
 
 
 async def _write(settings: Settings, *objects: object) -> None:

@@ -5,8 +5,8 @@ import httpx
 from app.audit.sink import AuditOutcome
 from app.auth.dependencies import SESSION_COOKIE
 from app.settings import Settings
-from tests.auth_helpers import AUTH, create_admin, random_password, start_login
 from tests.conftest import AuditRecorder, FakeClock
+from tests.helpers.auth import AUTH, create_admin, random_password, start_login
 
 
 async def test_first_sign_in_changes_the_password(

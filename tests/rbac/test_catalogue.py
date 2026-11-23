@@ -8,8 +8,8 @@ from app.rbac.catalogue import CatalogueChanges, sync_permission_table
 from app.rbac.registry import build_registry
 from app.settings import Settings
 from tests.conftest import Services
-from tests.helpers import app_client
-from tests.rbac_helpers import make_role
+from tests.helpers.client import app_client
+from tests.helpers.rbac import make_role
 
 
 async def _table(services: Services) -> list[tuple[str, str, str]]:

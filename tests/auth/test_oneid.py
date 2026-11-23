@@ -15,9 +15,9 @@ from app.auth.dependencies import SESSION_COOKIE
 from app.auth.oneid import OneIdError, OneIdIdentity
 from app.main import create_app
 from app.settings import Settings
-from tests.auth_helpers import AUTH, create_admin
 from tests.conftest import AuditRecorder, FakeClock, Services
-from tests.helpers import FRONTEND_ORIGIN, app_client, extra_client
+from tests.helpers.auth import AUTH, create_admin
+from tests.helpers.client import FRONTEND_ORIGIN, app_client, extra_client
 
 ONEID_AUTHORIZE = "https://oneid.test/authorize"
 

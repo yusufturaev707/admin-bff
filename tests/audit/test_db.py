@@ -15,8 +15,8 @@ from app.audit.verify import apply_retention, verify_chain
 from app.audit.writer import DbAuditSink
 from app.core.time import utcnow
 from app.settings import Settings
-from tests.audit_helpers import event, month_partition, records, sessions, write_events
 from tests.conftest import FakeClock, Services
+from tests.helpers.audit import event, month_partition, records, sessions, write_events
 
 
 @pytest.fixture

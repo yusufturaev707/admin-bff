@@ -12,12 +12,12 @@ from prometheus_client import REGISTRY
 
 from app.main import create_app
 from app.settings import Settings
-from tests.auth_helpers import AUTH, create_admin, login
 from tests.conftest import FakeClock, Services
-from tests.helpers import app_client
-from tests.rbac_helpers import make_admin_with
+from tests.helpers.auth import AUTH, create_admin, login
+from tests.helpers.client import app_client
+from tests.helpers.rbac import make_admin_with
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _value(name: str, **labels: str) -> float:

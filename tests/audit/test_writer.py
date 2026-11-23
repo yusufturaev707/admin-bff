@@ -19,8 +19,8 @@ from app.audit.writer import DbAuditSink
 from app.core.db import database_url
 from app.core.logging import configure_logging
 from app.settings import Settings
-from tests.audit_helpers import event, records, sessions
 from tests.conftest import AuditRecorder, FakeClock, Services
+from tests.helpers.audit import event, records, sessions
 
 
 @pytest.fixture

@@ -10,10 +10,10 @@ from app import main
 from app.api.docs import DOCS_URL, OPENAPI_URL, STATIC_URL
 from app.main import create_app
 from app.settings import Settings
-from tests.auth_helpers import AUTH, login
 from tests.conftest import FakeClock, Services
-from tests.helpers import app_client, extra_client
-from tests.rbac_helpers import make_admin_with, make_superadmin
+from tests.helpers.auth import AUTH, login
+from tests.helpers.client import app_client, extra_client
+from tests.helpers.rbac import make_admin_with, make_superadmin
 
 
 async def test_docs_are_open_outside_production(client: httpx.AsyncClient) -> None:

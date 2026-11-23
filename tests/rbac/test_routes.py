@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, FastAPI
 from app.rbac.dependencies import require, require_any
 from app.rbac.route_check import PUBLIC_PATHS
 from app.settings import Settings
-from tests.auth_helpers import create_admin, login
 from tests.conftest import FakeClock
-from tests.helpers import app_client
-from tests.rbac_helpers import make_admin_with
+from tests.helpers.auth import create_admin, login
+from tests.helpers.client import app_client
+from tests.helpers.rbac import make_admin_with
 
 
 def _router(path: str, *dependencies: object) -> APIRouter:

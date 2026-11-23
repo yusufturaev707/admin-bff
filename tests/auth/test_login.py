@@ -11,9 +11,9 @@ from app.auth.crypto import sha256_hex
 from app.auth.dependencies import SESSION_COOKIE
 from app.main import create_app
 from app.settings import Settings
-from tests.auth_helpers import AUTH, create_admin, random_password, start_login
 from tests.conftest import AuditRecorder, FakeClock, Services
-from tests.helpers import app_client, extra_client
+from tests.helpers.auth import AUTH, create_admin, random_password, start_login
+from tests.helpers.client import app_client, extra_client
 
 
 def _body_without_request_id(response: httpx.Response) -> dict[str, object]:

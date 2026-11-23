@@ -12,7 +12,7 @@ from app.core.errors import AppError, ErrorCode
 from app.main import create_app
 from app.settings import Settings
 from tests.conftest import Services
-from tests.helpers import app_client
+from tests.helpers.client import app_client
 
 router = APIRouter()
 

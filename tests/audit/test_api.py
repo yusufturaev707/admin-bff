@@ -16,11 +16,11 @@ from app.core.pagination import decode_cursor, encode_cursor
 from app.core.time import isoformat_z
 from app.main import create_app
 from app.settings import Settings
-from tests.audit_helpers import records, write_events
-from tests.auth_helpers import AUTH, Admin, create_admin, login, start_login
 from tests.conftest import FakeClock, Services
-from tests.helpers import app_client, extra_client
-from tests.rbac_helpers import make_admin_with, make_superadmin
+from tests.helpers.audit import records, write_events
+from tests.helpers.auth import AUTH, Admin, create_admin, login, start_login
+from tests.helpers.client import app_client, extra_client
+from tests.helpers.rbac import make_admin_with, make_superadmin
 
 AUDIT = "/api/v1/audit"
 ADMIN = "/api/v1/admin"

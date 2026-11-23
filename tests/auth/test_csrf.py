@@ -5,9 +5,9 @@ import pytest
 from fastapi import FastAPI
 
 from app.settings import Settings
-from tests.auth_helpers import AUTH, create_admin, login
 from tests.conftest import FakeClock
-from tests.helpers import extra_client
+from tests.helpers.auth import AUTH, create_admin, login
+from tests.helpers.client import extra_client
 
 
 async def test_post_without_csrf_token_is_rejected(

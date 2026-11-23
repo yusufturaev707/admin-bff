@@ -11,10 +11,10 @@ from app.audit import service as audit_service
 from app.audit.service import EXPORTS_PER_HOUR, csv_cell
 from app.core.ratelimit import FixedWindowLimiter
 from app.settings import Settings
-from tests.audit_helpers import records, write_events
-from tests.auth_helpers import login
 from tests.conftest import FakeClock, Services
-from tests.rbac_helpers import make_admin_with
+from tests.helpers.audit import records, write_events
+from tests.helpers.auth import login
+from tests.helpers.rbac import make_admin_with
 
 EXPORT = "/api/v1/audit/export"
 

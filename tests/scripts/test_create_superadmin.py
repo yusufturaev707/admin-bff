@@ -8,8 +8,8 @@ import pytest
 
 from app.settings import Settings
 from scripts import create_superadmin as script
-from tests.auth_helpers import AUTH, random_password
 from tests.conftest import Services
+from tests.helpers.auth import AUTH, random_password
 
 
 async def test_superadmin_signs_in_with_every_permission(

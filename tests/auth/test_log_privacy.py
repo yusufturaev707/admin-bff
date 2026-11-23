@@ -10,9 +10,9 @@ from app.auth.dependencies import SESSION_COOKIE
 from app.core.logging import configure_logging
 from app.main import create_app
 from app.settings import Settings
-from tests.auth_helpers import AUTH, create_admin, random_password
 from tests.conftest import FakeClock, Services
-from tests.helpers import app_client
+from tests.helpers.auth import AUTH, create_admin, random_password
+from tests.helpers.client import app_client
 
 
 @pytest.fixture

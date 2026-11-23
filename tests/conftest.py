@@ -35,7 +35,7 @@ from app.core.db import database_url
 from app.core.time import utcnow
 from app.main import create_app
 from app.settings import Settings, load_settings
-from tests.helpers import FRONTEND_ORIGIN, app_client
+from tests.helpers.client import FRONTEND_ORIGIN, app_client
 
 # Env vars that would otherwise leak a developer's local configuration into tests.
 _SETTINGS_ENV_VARS = [name.upper() for name in Settings.model_fields] + ["CREDENTIALS_DIRECTORY"]

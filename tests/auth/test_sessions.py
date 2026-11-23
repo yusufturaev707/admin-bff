@@ -6,9 +6,9 @@ from fastapi import FastAPI
 from app.audit.sink import AuditOutcome
 from app.auth.dependencies import SESSION_COOKIE
 from app.settings import Settings
-from tests.auth_helpers import AUTH, create_admin, login, random_password, start_login
 from tests.conftest import AuditRecorder, FakeClock
-from tests.helpers import extra_client
+from tests.helpers.auth import AUTH, create_admin, login, random_password, start_login
+from tests.helpers.client import extra_client
 
 
 def csrf(token: str) -> dict[str, str]:

@@ -14,10 +14,10 @@ from app.audit.sink import AuditOutcome
 from app.rbac.models import SUPERADMIN_ROLE
 from app.rbac.service import AdminService
 from app.settings import Settings
-from tests.auth_helpers import AUTH, Admin, create_admin, login, random_password
 from tests.conftest import AuditRecorder, FakeClock
-from tests.helpers import extra_client
-from tests.rbac_helpers import grant, make_admin_with, make_role, make_superadmin
+from tests.helpers.auth import AUTH, Admin, create_admin, login, random_password
+from tests.helpers.client import extra_client
+from tests.helpers.rbac import grant, make_admin_with, make_role, make_superadmin
 
 ADMIN = "/api/v1/admin"
 

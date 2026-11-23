@@ -3,7 +3,7 @@ import pytest
 
 from app.main import create_app
 from app.settings import Settings
-from tests.helpers import FRONTEND_ORIGIN, app_client
+from tests.helpers.client import FRONTEND_ORIGIN, app_client
 
 
 def _preflight_headers(origin: str) -> dict[str, str]:

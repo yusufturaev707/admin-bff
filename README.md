@@ -89,7 +89,7 @@ Testlar lokal PostgreSQL va Redis'da ishlaydi.
   shuning uchun testlar `FLUSHDB` qilmaydi. Ular tasodifiy prefiksli
   kalitlarni yaratadi va faqat shularni o'chiradi. Boshqa Redis kerak bo'lsa,
   `TEST_REDIS_URL` bering.
-- **Audit huquqlari testi.** `tests/test_audit_privileges.py` vaqtinchalik
+- **Audit huquqlari testi.** `tests/audit/test_privileges.py` vaqtinchalik
   ilova rolini yaratadi va oxirida o'chiradi. Buning uchun `DB_USER`da
   `CREATEROLE` bo'lishi kerak. Bo'lmasa, bu testlar "skipped"
   bo'lib o'tadi. Ularni o'tkazib yubormang:
@@ -113,7 +113,7 @@ uv run pip-audit
 O'zgarishni ko'rib chiqib, snapshot'ni yangilang:
 
 ```bash
-UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi.py
+UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/api/test_openapi.py
 ```
 
 Har bir endpoint'da aniq `operation_id` (`<system>_<resource>_<verb>`) bo'lishi

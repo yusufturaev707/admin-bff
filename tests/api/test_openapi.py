@@ -10,11 +10,11 @@ from app import __version__
 from app.core.routes import OPERATION_ID_RE, iter_api_routes, validate_routes
 from app.main import OPENAPI_URL, create_app
 from app.settings import Settings
-from tests.helpers import app_client
+from tests.helpers.client import app_client
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT_PATH = ROOT / "openapi" / "v1.json"
-# `UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/test_openapi.py` rewrites the snapshot.
+# `UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/api/test_openapi.py` rewrites the snapshot.
 UPDATE_ENV = "UPDATE_OPENAPI_SNAPSHOT"
 
 
@@ -66,7 +66,7 @@ def test_openapi_snapshot_is_up_to_date() -> None:
     snapshot = SNAPSHOT_PATH.read_text(encoding="utf-8")
     assert document == snapshot, (
         "OpenAPI changed: review the contract change, then run "
-        f"`{UPDATE_ENV}=1 uv run pytest tests/test_openapi.py`"
+        f"`{UPDATE_ENV}=1 uv run pytest tests/api/test_openapi.py`"
     )
 
 
