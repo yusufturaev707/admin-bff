@@ -35,6 +35,7 @@ class Base(DeclarativeBase):
 
 
 def database_url(settings: Settings) -> URL:
+    """The application role (DB_USER)."""
     return URL.create(
         drivername="postgresql+asyncpg",
         username=settings.db_user,
@@ -42,6 +43,17 @@ def database_url(settings: Settings) -> URL:
         host=settings.db_host,
         port=settings.db_port,
         database=settings.db_name,
+    )
+
+
+def owner_database_url(settings: Settings) -> URL:
+    """The schema owner (DB_OWNER_USER) for migrations; DB_USER if unset."""
+    if settings.db_owner_user is None:
+        return database_url(settings)
+    password = settings.db_owner_password
+    return database_url(settings).set(
+        username=settings.db_owner_user,
+        password=password.get_secret_value() if password else None,
     )
 
 

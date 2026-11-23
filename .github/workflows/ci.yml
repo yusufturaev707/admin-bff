@@ -55,8 +55,11 @@ jobs:
           DB_PASSWORD="$(openssl rand -hex 24)"
           echo "::add-mask::$DB_PASSWORD"
           cd /tmp
+          # CREATEROLE: audit huquqlari testi vaqtinchalik ilova rolini yaratadi
+          # (tests/test_audit_privileges.py). PostgreSQL 16'da bu rol faqat
+          # o'zi yaratgan rollarni boshqara oladi.
           sudo -u postgres psql -v ON_ERROR_STOP=1 -v pw="$DB_PASSWORD" <<'SQL'
-          CREATE ROLE admin_bff LOGIN CREATEDB PASSWORD :'pw';
+          CREATE ROLE admin_bff LOGIN CREATEDB CREATEROLE PASSWORD :'pw';
           SQL
           echo "DB_PASSWORD=$DB_PASSWORD" >> "$GITHUB_ENV"
 

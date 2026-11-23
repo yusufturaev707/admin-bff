@@ -73,6 +73,17 @@ class Settings(BaseSettings):
     db_password: SecretStr | None = None
     db_pool_size: int = Field(default=10, ge=1, le=100)
     db_max_overflow: int = Field(default=10, ge=0, le=100)
+    # Owner of the schema: runs the migrations and grants DB_USER its privileges
+    # (app/core/db_privileges.py). DB_USER itself may then only SELECT and
+    # INSERT the audit tables (section 9). Unset: DB_USER owns everything,
+    # which only development accepts (production refuses to start).
+    # `db_owner_password` is a credential for deploy.sh only, never loaded
+    # into the service.
+    db_owner_user: str | None = None
+    db_owner_password: SecretStr | None = None
+
+    # Whole monthly audit partitions older than this are dropped (section 9).
+    audit_retention_days: int = Field(default=90, ge=90, le=3650)
 
     # Session/cache Redis. `unix:///run/redis/redis.sock` is also accepted.
     redis_url: str = "redis://127.0.0.1:6379/0"

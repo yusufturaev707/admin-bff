@@ -2,6 +2,11 @@
 
 The connection URL is built from app.settings, so credentials come from the
 environment / systemd credentials and are never written to alembic.ini.
+
+Migrations run as the schema owner (DB_OWNER_USER, falling back to DB_USER).
+When the owner and the application role (DB_USER) differ, the application
+role's privileges are (re)granted after every upgrade, in the same transaction
+(app/core/db_privileges.py).
 """
 
 import asyncio
@@ -11,9 +16,12 @@ from alembic import context
 from sqlalchemy.engine import URL, Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import app.audit.models
 import app.auth.models
-import app.rbac.models  # noqa: F401  (both register their tables on Base.metadata)
-from app.core.db import Base, database_url
+import app.rbac.models  # noqa: F401  (all register their tables on Base.metadata)
+from app.audit.models import include_name
+from app.core.db import Base, owner_database_url
+from app.core.db_privileges import grant_app_privileges
 from app.settings import load_settings
 
 config = context.config
@@ -23,34 +31,50 @@ if config.config_file_name is not None and not config.attributes.get("skip_loggi
 target_metadata = Base.metadata
 
 
-def _url() -> URL:
-    # Tests pass the URL of their temporary database programmatically.
+def _url_and_app_role() -> tuple[URL, str | None]:
+    # Tests pass the URL of their temporary database (and optionally the
+    # application role) programmatically.
     url = config.attributes.get("database_url")
-    return url if isinstance(url, URL) else database_url(load_settings())
+    if isinstance(url, URL):
+        role = config.attributes.get("app_role")
+        return url, role if isinstance(role, str) else None
+    settings = load_settings()
+    owner = settings.db_owner_user
+    app_role = settings.db_user if owner is not None and owner != settings.db_user else None
+    return owner_database_url(settings), app_role
 
 
 def run_migrations_offline() -> None:
-    url = _url().render_as_string(hide_password=True)
+    url, _ = _url_and_app_role()
     context.configure(
-        url=url,
+        url=url.render_as_string(hide_password=True),
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
-def _run_sync(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+def _run_sync(connection: Connection, app_role: str | None) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_name=include_name,
+    )
     with context.begin_transaction():
         context.run_migrations()
+        if app_role is not None:
+            grant_app_privileges(connection, app_role)
 
 
 async def run_migrations_online() -> None:
-    engine = create_async_engine(_url())
+    url, app_role = _url_and_app_role()
+    engine = create_async_engine(url)
     async with engine.connect() as connection:
-        await connection.run_sync(_run_sync)
+        await connection.run_sync(_run_sync, app_role)
     await engine.dispose()
 
 

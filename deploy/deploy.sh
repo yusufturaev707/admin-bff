@@ -23,9 +23,10 @@ echo "==> uv sync"
 UV_PYTHON_DOWNLOADS=never "$UV" sync --frozen --no-dev --compile-bytecode
 
 echo "==> alembic upgrade head"
-# Migratsiya servis bilan bir xil sozlamalar va credential'lardan foydalanadi.
-# TODO(owner): 3-bosqichda migratsiyalar alohida DB egasi (owner) user'i bilan
-# bajariladi, chunki ilova user'i audit jadvalida faqat INSERT qila oladi.
+# Migratsiyalar DB egasi (DB_OWNER_USER, parol: credentials/db_owner_password)
+# nomidan bajariladi. Keyin ilova roliga (DB_USER) huquqlar qaytadan beriladi:
+# audit jadvallarida faqat SELECT va INSERT (9-bo'lim, migrations/env.py).
+# db_owner_password servisga berilmaydi (admin-bff.service'da LoadCredential yo'q).
 set -a
 # shellcheck disable=SC1091
 . /etc/admin-bff/admin-bff.env
