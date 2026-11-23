@@ -9,7 +9,7 @@ for the user. Internal exception texts and upstream system messages are never
 passed through.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Any
@@ -115,6 +115,15 @@ class AppError(Exception):
         self.details = dict(details or {})
         self.headers = dict(headers or {})
         super().__init__(f"{code}: {self.message}")
+
+
+def field_error(loc: Sequence[str], error_type: str, message: str) -> AppError:
+    """A 422 for one form field, in the same shape as request validation errors."""
+    return AppError(
+        ErrorCode.VALIDATION_ERROR,
+        message,
+        details={"fields": [{"loc": list(loc), "type": error_type, "msg": message}]},
+    )
 
 
 def error_response(

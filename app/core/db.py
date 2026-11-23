@@ -4,7 +4,10 @@ Only the BFF's own database. Databases of other systems are never connected
 to (architecture decision 3): they are reached through their internal admin API.
 """
 
-from sqlalchemy import MetaData, text
+from datetime import datetime
+from typing import Any, ClassVar
+
+from sqlalchemy import DateTime, MetaData, text
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -27,6 +30,8 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    # Every `Mapped[datetime]` column is `timestamptz` (timezone-aware UTC).
+    type_annotation_map: ClassVar[dict[Any, Any]] = {datetime: DateTime(timezone=True)}
 
 
 def database_url(settings: Settings) -> URL:

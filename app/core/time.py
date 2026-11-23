@@ -5,7 +5,11 @@ the past (`datetime.now()` vs UTC), so ruff's DTZ rules forbid them and the
 helpers below reject them. `Asia/Tashkent` is used only for display.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime
+
+# Injected wherever "now" matters (sessions, TOTP), so tests can move time.
+type Clock = Callable[[], datetime]
 
 
 def utcnow() -> datetime:

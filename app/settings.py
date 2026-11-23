@@ -9,7 +9,10 @@ When `$CREDENTIALS_DIRECTORY` is set (i.e. the service runs under systemd), the
 production configuration.
 """
 
+import base64
+import binascii
 import os
+import re
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
@@ -20,6 +23,25 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 AppEnv = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 LogFormat = Literal["json", "console"]
+
+_REDIS_PREFIX_RE = re.compile(r"^[A-Za-z0-9:_-]{0,64}$")
+
+# OWASP minimum for Argon2id (m=19 MiB, t=2). Weaker parameters are only
+# allowed outside production (tests use them to stay fast).
+_ARGON2_MIN_MEMORY_KIB = 19 * 1024
+_ARGON2_MIN_TIME_COST = 2
+
+
+def decode_key(value: SecretStr, *, min_bytes: int, max_bytes: int | None = None) -> bytes:
+    """Decodes a base64 key from settings and checks its length."""
+    try:
+        raw = base64.b64decode(value.get_secret_value(), validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("must be base64") from exc
+    if len(raw) < min_bytes or (max_bytes is not None and len(raw) > max_bytes):
+        expected = f"{min_bytes}" if max_bytes == min_bytes else f">= {min_bytes}"
+        raise ValueError(f"must decode to {expected} bytes")
+    return raw
 
 
 class Settings(BaseSettings):
@@ -55,13 +77,75 @@ class Settings(BaseSettings):
     # Session/cache Redis. `unix:///run/redis/redis.sock` is also accepted.
     redis_url: str = "redis://127.0.0.1:6379/0"
     redis_password: SecretStr | None = None
+    # Prepended to every key. Empty in production (the sessions Redis belongs to
+    # the BFF alone); useful when a development Redis is shared with other projects.
+    redis_key_prefix: str = ""
 
     # Timeout of a single dependency check in /ready.
     ready_timeout_s: float = Field(default=2.0, gt=0, le=10)
 
+    # --- Auth (section 6) ---
+    # AES-256-GCM key for TOTP secrets: base64 of 32 random bytes.
+    # Production: systemd credential `totp_enc_key`.
+    totp_enc_key: SecretStr | None = None
+    # HMAC-SHA256 key for looking up an admin by PINFL (OneID): base64, >= 32 bytes.
+    # Production: systemd credential `pinfl_hmac_key`.
+    pinfl_hmac_key: SecretStr | None = None
+    totp_issuer: str = Field(default="UZBMB Admin", min_length=1, max_length=64)
+
+    session_idle_timeout_s: int = Field(default=30 * 60, ge=60, le=24 * 3600)
+    session_absolute_timeout_s: int = Field(default=12 * 3600, ge=300, le=7 * 24 * 3600)
+
+    # Argon2id cost. Defaults are argon2-cffi's (RFC 9106 low-memory profile).
+    argon2_time_cost: int = Field(default=3, ge=1, le=10)
+    argon2_memory_cost_kib: int = Field(default=64 * 1024, ge=8, le=1024 * 1024)
+    argon2_parallelism: int = Field(default=4, ge=1, le=16)
+
+    # --- OneID (template, section 6) ---
+    # The client itself is not implemented yet (TODO(owner): OneID integration
+    # documents). While it is missing, enabling OneID stops the startup.
+    oneid_enabled: bool = False
+    oneid_client_id: str | None = None
+    # Production: systemd credential `oneid_client_secret`.
+    oneid_client_secret: SecretStr | None = None
+    oneid_redirect_uri: str | None = None
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    def totp_key(self) -> bytes:
+        if self.totp_enc_key is None:
+            raise RuntimeError("TOTP_ENC_KEY is not configured (systemd credential totp_enc_key)")
+        return decode_key(self.totp_enc_key, min_bytes=32, max_bytes=32)
+
+    def pinfl_key(self) -> bytes:
+        if self.pinfl_hmac_key is None:
+            raise RuntimeError(
+                "PINFL_HMAC_KEY is not configured (systemd credential pinfl_hmac_key)"
+            )
+        return decode_key(self.pinfl_hmac_key, min_bytes=32)
+
+    @field_validator("totp_enc_key")
+    @classmethod
+    def _validate_totp_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None:
+            decode_key(value, min_bytes=32, max_bytes=32)
+        return value
+
+    @field_validator("pinfl_hmac_key")
+    @classmethod
+    def _validate_pinfl_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None:
+            decode_key(value, min_bytes=32)
+        return value
+
+    @field_validator("redis_key_prefix")
+    @classmethod
+    def _validate_redis_prefix(cls, value: str) -> str:
+        if not _REDIS_PREFIX_RE.fullmatch(value):
+            raise ValueError("only letters, digits, ':', '_' and '-' (max 64)")
+        return value
 
     @field_validator("frontend_origin")
     @classmethod
@@ -100,6 +184,31 @@ class Settings(BaseSettings):
                 raise ValueError("production requires LOG_FORMAT=json")
             if self.frontend_origin is not None and not self.frontend_origin.startswith("https://"):
                 raise ValueError("production requires an https:// FRONTEND_ORIGIN")
+            if (
+                self.argon2_memory_cost_kib < _ARGON2_MIN_MEMORY_KIB
+                or self.argon2_time_cost < _ARGON2_MIN_TIME_COST
+            ):
+                raise ValueError("production requires Argon2id m >= 19 MiB and t >= 2")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_oneid(self) -> "Settings":
+        if not self.oneid_enabled:
+            return self
+        missing = [
+            name
+            for name in ("oneid_client_id", "oneid_client_secret", "oneid_redirect_uri")
+            if getattr(self, name) is None
+        ]
+        if self.pinfl_hmac_key is None:
+            missing.append("pinfl_hmac_key")
+        if self.frontend_origin is None:
+            missing.append("frontend_origin")
+        if missing:
+            raise ValueError(f"ONEID_ENABLED requires: {', '.join(missing)}")
+        redirect = urlsplit(self.oneid_redirect_uri or "")
+        if redirect.scheme != "https" and self.is_production:
+            raise ValueError("production requires an https:// ONEID_REDIRECT_URI")
         return self
 
 
