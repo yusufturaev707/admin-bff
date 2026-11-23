@@ -76,15 +76,22 @@ def format_ts(value: datetime) -> str:
 
 
 def canonical_ip(value: object) -> str | None:
-    """`10.20.30.40`, `2001:db8::1`; None for anything that is not an address
-    (e.g. "unknown" when the client address is missing)."""
+    """`10.20.30.40`, `2001:db8::1`, `::ffff:10.0.0.1`; None for anything that is
+    not an address (e.g. "unknown" when the client address is missing).
+
+    The text is part of the hashed row, so it must not depend on the Python
+    version: 3.13 prints an IPv4-mapped IPv6 address as `::ffff:10.0.0.1`, 3.12
+    as `::ffff:a00:1`. It is always written in the dotted form."""
     if value is None:
         return None
     raw = str(value).split("%", 1)[0]  # an IPv6 zone id cannot be stored
     try:
-        return str(ipaddress.ip_interface(raw).ip)
+        ip = ipaddress.ip_interface(raw).ip
     except ValueError:
         return None
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return f"::ffff:{ip.ipv4_mapped}"
+    return str(ip)
 
 
 def normalize_json(value: object, depth: int = 0) -> JsonValue:
