@@ -49,16 +49,18 @@ def is_sensitive_key(key: str) -> bool:
     return any(fragment in lowered for fragment in SENSITIVE_KEY_FRAGMENTS)
 
 
-def _scrub(value: Any) -> Any:
+def redact_value(value: Any) -> Any:
+    """Redacts sensitive keys and masks PII in strings, at any nesting depth.
+    Also used for the audit log (app.audit.chain)."""
     if isinstance(value, str):
         return scrub_text(value)
     if isinstance(value, Mapping):
         return {
-            k: REDACTED if isinstance(k, str) and is_sensitive_key(k) else _scrub(v)
+            k: REDACTED if isinstance(k, str) and is_sensitive_key(k) else redact_value(v)
             for k, v in value.items()
         }
     if isinstance(value, list | tuple | set | frozenset):
-        return [_scrub(v) for v in value]
+        return [redact_value(v) for v in value]
     return value
 
 
@@ -70,7 +72,7 @@ def redact_processor(
             if key == "event" and isinstance(value, str):
                 event_dict[key] = scrub_text(value)
             continue
-        event_dict[key] = REDACTED if is_sensitive_key(key) else _scrub(value)
+        event_dict[key] = REDACTED if is_sensitive_key(key) else redact_value(value)
     return event_dict
 
 
