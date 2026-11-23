@@ -217,13 +217,13 @@ SDK `pip install` orqali ichki git manzilidan yoki lokal yo'ldan o'rnatiladi.
 
 ## 6. Autentifikatsiya: login, parol, TOTP, sessiya, CSRF
 
-Kirish ikki qadamdan iborat. Birinchi qadam ikki usuldan biri bilan bajariladi: username va parol, yoki fuqaroning OneID'si. Ikkinchi qadam har doim TOTP kod. Sessiya Redis'da saqlanadi, brauzer esa faqat HttpOnly cookie oladi.
+Kirish ikki qadamdan iborat. Birinchi qadam ikki usuldan biri bilan bajariladi: username va parol, yoki fuqaroning OneID'si. Ikkinchi qadam TOTP kod. **Egasining qarori (2026-11-23): TOTP hozircha o'chiq, production'da ham (`TOTP_REQUIRED=false`).** Kirish faqat birinchi qadam bilan bajariladi (pastda, "TOTP"). Sessiya Redis'da saqlanadi, brauzer esa faqat HttpOnly cookie oladi.
 
 **Endpoint'lar:**
 
 | Endpoint | Vazifasi |
 | --- | --- |
-| `POST /api/v1/auth/login` | username va parolni qabul qiladi. Javob: `{"mfa_required": true, "mfa_token": "..."}`. `mfa_token` bir martalik, 5 daqiqa amal qiladi, Redis'da saqlanadi |
+| `POST /api/v1/auth/login` | username va parolni qabul qiladi. Javob: `{"mfa_required": true, "mfa_token": "..."}`. `mfa_token` bir martalik, 5 daqiqa amal qiladi, Redis'da saqlanadi. TOTP o'chiq bo'lsa, sessiya darhol ochiladi (`mfa_required: false`, cookie va `csrf_token`) |
 | `POST /api/v1/auth/mfa` | `mfa_token` va TOTP kodni (yoki recovery code'ni) qabul qiladi. Sessiya cookie'sini o'rnatadi va body'da `csrf_token` qaytaradi |
 | `POST /api/v1/auth/logout` | joriy sessiyani o'chiradi |
 | `GET /api/v1/auth/sessions`, `DELETE /api/v1/auth/sessions/{id}` | adminning o'z faol sessiyalari ro'yxati va ularni tugatish |
@@ -246,6 +246,14 @@ Kirish ikki qadamdan iborat. Birinchi qadam ikki usuldan biri bilan bajariladi: 
 - Har bir blok audit'ga yoziladi va alert yuboriladi. Blokni superadmin oldinroq ochishi mumkin.
 
 **TOTP:**
+
+- **Hozircha o'chiq** (egasining qarori, 2026-11-23, production'da ham). `TOTP_REQUIRED=false` bo'lganda:
+  - login'dan keyin darhol to'liq sessiya ochiladi;
+  - birinchi kirishda TOTP ulash talab qilinmaydi, faqat parol almashtiriladi;
+  - parol almashtirishda kod so'ralmaydi;
+  - step-up so'ralmaydi.
+
+  Kod va testlar saqlanadi. Yoqish uchun `TOTP_REQUIRED=true` qilinadi va servis qayta ishga tushiriladi. O'chiq paytida servis ishga tushishda `totp_disabled` ogohlantirishini yozadi, har bir login audit yozuvida `totp_required` bo'ladi. Pastdagi qoidalar TOTP yoqilganda amal qiladi.
 
 - `pyotp`, 6 xonali kod, 30 soniyalik oyna, `valid_window=1`.
 - Secret DB'da AES-GCM bilan shifrlab saqlanadi. Kalit (`TOTP_ENC_KEY`) servisga systemd credential sifatida beriladi (`LoadCredential=`, 11-bo'lim).
@@ -314,6 +322,7 @@ Har bir endpoint aniq bir permission talab qiladi. Permission'siz route topilsa,
 
 - Qaysi amallar uchun: `ActionSpec.dangerous=True` deb belgilanganlar, o'chirish, bulk amallar, parol reset, PII eksport.
 - Ular `require_recent_mfa(300)` bilan himoyalanadi. Shart bajarilmasa, 401 va `{"code": "step_up_required"}` qaytadi. Frontend shunda TOTP oynasini ochadi va kodni `/auth/step-up`'ga yuboradi.
+- TOTP o'chiq bo'lsa (`TOTP_REQUIRED=false`, 6-bo'lim), step-up so'ralmaydi.
 
 **4-ko'z prinsipi (2-navbat):**
 
