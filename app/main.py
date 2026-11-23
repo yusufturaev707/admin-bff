@@ -14,18 +14,29 @@ from fastapi.routing import APIRoute
 
 from app import __version__
 from app.api import health
-from app.core.db import create_engine, ping_database
+from app.audit.sink import AuditSink, LogAuditSink
+from app.auth import router as auth_router
+from app.auth.csrf import OriginCheckMiddleware
+from app.auth.dependencies import CSRF_HEADER
+from app.auth.oneid import OneIdClient, build_oneid_client
+from app.auth.service import build_auth_service
+from app.core.db import create_engine, create_sessionmaker, ping_database
 from app.core.errors import install_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.redis import create_redis, ping_redis
 from app.core.request_id import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.routes import validate_routes
+from app.core.time import Clock, utcnow
 from app.settings import Settings, get_settings
 
 OPENAPI_URL = "/api/v1/openapi.json"
 
 OPENAPI_TAGS = [
     {"name": "health", "description": "Servis holati (liveness va readiness)"},
+    {
+        "name": "auth",
+        "description": "Kirish: login + parol yoki OneID, keyin TOTP; sessiya, CSRF, step-up",
+    },
 ]
 
 logger = get_logger(__name__)
@@ -40,21 +51,39 @@ def require_explicit_operation_id(route: APIRoute) -> str:
     )
 
 
-def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+def _lifespan(
+    settings: Settings,
+    *,
+    clock: Clock,
+    audit_sink: AuditSink | None,
+    oneid_client: OneIdClient | None,
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Runs after every router is included: a bad route table stops startup.
         validate_routes(app)
+        # OneID stays off unless enabled; enabled without a client, startup stops.
+        oneid = (oneid_client or build_oneid_client(settings)) if settings.oneid_enabled else None
         engine = create_engine(settings)
         redis = create_redis(settings)
-        app.state.readiness_checks = {
-            "db": partial(ping_database, engine),
-            "redis": partial(ping_redis, redis),
-        }
-        logger.info("startup", version=__version__, env=settings.app_env)
         try:
+            app.state.auth_service = build_auth_service(
+                settings,
+                create_sessionmaker(engine),
+                redis,
+                clock=clock,
+                audit=audit_sink or LogAuditSink(),
+                oneid_client=oneid,
+            )
+            app.state.readiness_checks = {
+                "db": partial(ping_database, engine),
+                "redis": partial(ping_redis, redis),
+            }
+            logger.info("startup", version=__version__, env=settings.app_env)
             yield
         finally:
+            if oneid is not None:
+                await oneid.aclose()
             await redis.aclose()
             await engine.dispose()
             logger.info("shutdown")
@@ -62,7 +91,14 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
     return lifespan
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    clock: Clock = utcnow,
+    audit_sink: AuditSink | None = None,
+    oneid_client: OneIdClient | None = None,
+) -> FastAPI:
+    """`clock`, `audit_sink` and `oneid_client` are replaced only in tests."""
     settings = settings or get_settings()
     configure_logging(settings)
 
@@ -78,16 +114,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         swagger_ui_oauth2_redirect_url=None,
         openapi_tags=OPENAPI_TAGS,
         generate_unique_id_function=require_explicit_operation_id,
-        lifespan=_lifespan(settings),
+        lifespan=_lifespan(settings, clock=clock, audit_sink=audit_sink, oneid_client=oneid_client),
         debug=False,
     )
     app.state.settings = settings
+    app.state.clock = clock
 
     install_exception_handlers(app)
 
     # Starlette wraps middleware in reverse order: the last added is the
-    # outermost. RequestContextMiddleware is outermost so that every response,
-    # including CORS preflight answers, carries a request ID and is logged.
+    # outermost. Order from the outside: request id + access log, CORS (so even
+    # rejected requests get CORS headers), Origin check (CSRF), the app.
+    app.add_middleware(OriginCheckMiddleware, allowed_origin=settings.frontend_origin)
     if settings.frontend_origin is not None:
         app.add_middleware(
             CORSMiddleware,
@@ -96,7 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
             allow_headers=[
                 "Content-Type",
-                "X-CSRF-Token",
+                CSRF_HEADER,
                 REQUEST_ID_HEADER,
                 "Idempotency-Key",
                 "Last-Event-ID",
@@ -107,4 +145,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestContextMiddleware)
 
     app.include_router(health.router)
+    app.include_router(auth_router.router)
     return app
