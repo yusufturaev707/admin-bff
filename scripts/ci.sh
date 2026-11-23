@@ -16,10 +16,13 @@ step "ruff format --check"
 uv run ruff format --check .
 
 step "mypy --strict"
-uv run mypy --strict app/ tests/
+uv run mypy --strict app/ tests/ scripts/
 
-step "pytest (OpenAPI snapshot tekshiruvi ham shu yerda)"
-uv run pytest
+step "pytest + coverage (OpenAPI snapshot tekshiruvi ham shu yerda)"
+uv run pytest --cov --cov-report=term --cov-report=json:coverage.json --cov-fail-under=80
+
+step "coverage: auth/rbac/audit/service_auth kamida 90%, umumiy kamida 80%"
+uv run python scripts/check_coverage.py coverage.json
 
 step "bandit"
 uv run bandit --quiet --recursive app
