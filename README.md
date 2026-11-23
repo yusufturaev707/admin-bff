@@ -5,7 +5,8 @@ ejournal, quloq dastur va keyin qo'shiladiganlar) shu BFF orqali bitta
 adminkadan boshqariladi. Frontend faqat shu API bilan ishlaydi
 (`/api/v1/openapi.json`, snapshot: `openapi/v1.json`).
 
-Holat: **0-bosqich (skelet)**. Bosqichlar ro'yxati `CLAUDE.md`ning 12-bo'limida.
+Holat: **1-bosqich (Auth)**. Bosqichlar ro'yxati `CLAUDE.md`ning 12-bo'limida.
+Frontend uchun qo'llanma: [`docs/frontend.md`](docs/frontend.md).
 
 ## Talablar
 
@@ -17,9 +18,27 @@ Holat: **0-bosqich (skelet)**. Bosqichlar ro'yxati `CLAUDE.md`ning 12-bo'limida.
 
 ```bash
 uv sync                      # .venv yaratadi va dependency'larni o'rnatadi
-cp .env.example .env         # kerak bo'lsa DB/Redis manzillarini o'zgartiring
+cp .env.example .env         # DB/Redis manzillari, DB_PASSWORD, kalitlar
+```
+
+`.env`da `TOTP_ENC_KEY` va `PINFL_HMAC_KEY` bo'lishi shart. Ular 32 baytli
+tasodifiy kalitlar (base64), yaratish buyrug'i `.env.example`da yozilgan.
+PostgreSQL'da `DB_USER` role'i bo'lishi kerak: `CREATEDB` huquqi bilan, chunki
+testlar o'zlarining vaqtinchalik bazasini yaratadi.
+
+```sql
+CREATE ROLE admin_bff LOGIN CREATEDB PASSWORD '...';
+CREATE DATABASE admin_bff OWNER admin_bff;
+```
+
+```bash
+uv run alembic upgrade head                                 # jadvallar
+uv run python -m app.cli create-superadmin --username admin # parol so'raladi
 uv run uvicorn --factory app.main:create_app --reload --port 8000
 ```
+
+Birinchi kirishda admin TOTP'ni ulaydi va parolini almashtiradi
+(`docs/frontend.md`, "Birinchi kirish").
 
 Tekshirish:
 
@@ -32,6 +51,16 @@ Production'dan tashqari muhitda OpenAPI sxemasi
 `http://127.0.0.1:8000/api/v1/openapi.json` manzilida. Production'da u yopiq.
 
 ## Tekshiruvlar
+
+Testlar lokal PostgreSQL va Redis'da ishlaydi.
+
+- **PostgreSQL.** Har bir test sessiyasi `admin_bff_test_<tasodifiy>`
+  bazasini yaratadi, unga migratsiyalarni qo'llaydi va oxirida o'chiradi.
+  Ulanish uchun `.env` yoki environment'dagi `DB_*` sozlamalari olinadi.
+- **Redis.** Lokal Redis boshqa loyihalar bilan umumiy bo'lishi mumkin,
+  shuning uchun testlar `FLUSHDB` qilmaydi. Ular tasodifiy prefiksli
+  kalitlarni yaratadi va faqat shularni o'chiradi. Boshqa Redis kerak bo'lsa,
+  `TEST_REDIS_URL` bering.
 
 Hammasi bitta skriptda, CI ham shuni ishlatadi:
 
@@ -79,10 +108,19 @@ mavjud bo'lsa) `.env` umuman o'qilmaydi.
 | `FRONTEND_ORIGIN` | yo'q | CORS va CSRF uchun yagona ruxsat etilgan origin |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | `127.0.0.1`, `5432`, `admin_bff`, `admin_bff` | `DB_HOST` unix socket papkasi ham bo'lishi mumkin |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | parol URL'da bo'lmasin |
+| `REDIS_KEY_PREFIX` | bo'sh | umumiy dev Redis'da kalitlar aralashmasligi uchun |
+| `SESSION_IDLE_TIMEOUT_S`, `SESSION_ABSOLUTE_TIMEOUT_S` | `1800`, `43200` | sessiya: 30 daqiqa harakatsizlik, 12 soat jami |
+| `ARGON2_TIME_COST`, `ARGON2_MEMORY_COST_KIB`, `ARGON2_PARALLELISM` | `3`, `65536`, `4` | production'da kamida m=19 MiB, t=2 |
+| `TOTP_ISSUER` | `UZBMB Admin` | autentifikator ilovasida ko'rinadigan nom |
+| `ONEID_ENABLED` | `false` | OneID shablon, client hali yozilmagan (`app/auth/oneid.py`) |
 
-Secret'lar (`db_password`, `redis_password`, keyin `totp_enc_key`,
-`jwt_private_key`) production'da faqat systemd `LoadCredential=` orqali
-beriladi. Kodga, testga va repo'ga yozilmaydi.
+Secret'lar production'da faqat systemd `LoadCredential=` orqali beriladi. Kodga,
+testga va repo'ga yozilmaydi. Ular:
+
+- `db_password` va `redis_password`;
+- `totp_enc_key`: TOTP secret'larini AES-GCM bilan shifrlash kaliti;
+- `pinfl_hmac_key`: OneID'da PINFL bo'yicha qidirish kaliti;
+- keyingi bosqichlarda `jwt_private_key` va `oneid_client_secret`.
 
 ## Deploy (Debian, systemd, Docker'siz)
 
@@ -110,7 +148,9 @@ sudo /opt/admin-bff/deploy/deploy.sh
 
 ```bash
 uv run python -m app.cli export-openapi [--check]
+uv run python -m app.cli create-superadmin --username <login>   # parol interaktiv so'raladi
+uv run python -m app.cli unlock-login --username <login> [--ip <ip>]
 ```
 
-Keyingi bosqichlarda qo'shiladi: `create-superadmin`, `sync-permissions`,
-`rotate-keys`, `verify-audit`.
+Keyingi bosqichlarda qo'shiladi: `sync-permissions`, `rotate-keys`,
+`verify-audit`.
