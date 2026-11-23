@@ -60,12 +60,10 @@ def any_covers(holders: Iterable[str], pattern: str) -> bool:
 # theirs in app/connectors/<system_id>/permissions.py (Phase 5).
 CORE_PERMISSIONS = (
     PermissionSpec("admin:users:read", "Adminlar ro'yxati va ma'lumotlarini ko'rish"),
-    PermissionSpec(
-        "admin:users:write", "Admin yaratish va tahrirlash, bloklash, rol va hudud berish"
-    ),
+    PermissionSpec("admin:users:write", "Admin yaratish va tahrirlash, bloklash, rol berish"),
     PermissionSpec(
         "admin:users:security",
-        "Admin parolini va TOTP'ini tiklash, login blokini muddatidan oldin ochish",
+        "Admin parolini tiklash, login blokini muddatidan oldin ochish",
     ),
     PermissionSpec("admin:roles:read", "Rollar va permission'lar ro'yxatini ko'rish"),
     PermissionSpec("admin:roles:write", "Rol yaratish, tahrirlash va o'chirish"),

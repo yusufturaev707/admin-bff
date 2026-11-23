@@ -1,7 +1,7 @@
 """OneID (citizen single sign-on) client: template.
 
 The login flow around it is complete (`/auth/oneid/start` and
-`/auth/oneid/callback`, state check, PINFL -> admin lookup, TOTP afterwards).
+`/auth/oneid/callback`, state check, PINFL -> admin lookup).
 Only the HTTP client that talks to OneID is missing:
 
 TODO(owner): OneID integration documents are needed: authorization, token and

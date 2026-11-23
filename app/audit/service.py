@@ -1,8 +1,7 @@
 """Reading the audit log: list with filters, CSV export (section 9).
 
-Ordinary reads are not audited (section 9); an export is, and needs step-up
-(enforced by the route) and is limited to EXPORTS_PER_HOUR per admin
-(section 11).
+Ordinary reads are not audited (section 9); an export is, and is limited to
+EXPORTS_PER_HOUR per admin (section 11).
 """
 
 import csv

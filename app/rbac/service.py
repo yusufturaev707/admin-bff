@@ -39,11 +39,9 @@ from app.rbac.principal import Principal, PrincipalLoader
 from app.rbac.registry import PermissionRegistry
 from app.settings import Settings
 
-FORBIDDEN_SELF = (
-    "O'z rolingiz, hududlaringiz, kirish usullaringiz va holatingizni o'zgartira olmaysiz"
-)
+FORBIDDEN_SELF = "O'z rolingiz, kirish usullaringiz va holatingizni o'zgartira olmaysiz"
 FORBIDDEN_HIGHER = "Sizdan yuqori huquqli adminni boshqara olmaysiz"
-FORBIDDEN_GRANT = "O'zingizda yo'q huquq yoki hududni bera olmaysiz"
+FORBIDDEN_GRANT = "O'zingizda yo'q huquqni bera olmaysiz"
 LAST_SUPERADMIN = "Oxirgi faol superadminni o'chirib yoki bloklab bo'lmaydi"
 
 _SORT_COLUMNS = {

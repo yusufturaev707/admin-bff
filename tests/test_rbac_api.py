@@ -84,7 +84,7 @@ async def test_role_created_by_superadmin_is_applied(
     role_id = role.json()["id"]
 
     # A new admin created through the API gets a one-time temporary password
-    # and must enroll TOTP and change the password first.
+    # and must change the password first.
     created = await boss.send(
         "POST",
         f"{ADMIN}/users",

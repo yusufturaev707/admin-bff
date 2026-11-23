@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/v1", tags=["me"])
 @router.get(
     "/me",
     operation_id="core_me_get",
-    summary="Joriy admin: ma'lumotlari, permission'lari va hududlari",
+    summary="Joriy admin: ma'lumotlari va permission'lari",
     responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}},
 )
 async def me(principal: PrincipalDep, service: AdminServiceDep) -> MeOut:

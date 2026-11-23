@@ -506,7 +506,7 @@
         "tags": [
           "me"
         ],
-        "summary": "Joriy admin: ma'lumotlari, permission'lari va hududlari",
+        "summary": "Joriy admin: ma'lumotlari va permission'lari",
         "operationId": "core_me_get",
         "responses": {
           "200": {
@@ -3606,7 +3606,7 @@
     },
     {
       "name": "me",
-      "description": "Joriy admin: permission'lar va hududlar (menyu shundan quriladi)"
+      "description": "Joriy admin va uning permission'lari (menyu shundan quriladi)"
     },
     {
       "name": "admin",

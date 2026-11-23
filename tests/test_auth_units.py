@@ -1,4 +1,4 @@
-"""Unit tests: crypto, password policy, TOTP, recovery codes, auth settings."""
+"""Unit tests: password policy, Argon2, login limiter, usernames, auth settings."""
 
 import asyncio
 import base64

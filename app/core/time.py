@@ -8,7 +8,7 @@ helpers below reject them. `Asia/Tashkent` is used only for display.
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-# Injected wherever "now" matters (sessions, TOTP), so tests can move time.
+# Injected wherever "now" matters (sessions, audit), so tests can move time.
 type Clock = Callable[[], datetime]
 
 

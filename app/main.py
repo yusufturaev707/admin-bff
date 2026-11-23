@@ -52,7 +52,7 @@ OPENAPI_TAGS = [
     {"name": "health", "description": "Servis holati (liveness va readiness)"},
     {
         "name": "me",
-        "description": "Joriy admin: permission'lar va hududlar (menyu shundan quriladi)",
+        "description": "Joriy admin va uning permission'lari (menyu shundan quriladi)",
     },
     {"name": "admin", "description": "Adminlar, rollar va permission'larni boshqarish"},
     {

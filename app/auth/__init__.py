@@ -1,1 +1,1 @@
-"""Autentifikatsiya: login, parol, TOTP, sessiya, CSRF, AuthProvider (1-bosqich)."""
+"""Autentifikatsiya: login, parol, sessiya, CSRF, AuthProvider (1-bosqich)."""

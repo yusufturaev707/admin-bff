@@ -1,6 +1,6 @@
 """Admin DB tables of the auth module.
 
-Roles, permissions and scopes are added in Phase 2, the audit table in Phase 3.
+Roles and permissions are in app.rbac.models, the audit log in app.audit.models.
 """
 
 import re
@@ -32,7 +32,7 @@ def normalize_username(value: str) -> str | None:
 
 class AuthMethod(StrEnum):
     PASSWORD = "password"  # noqa: S105 - a method name, not a secret  # nosec B105
-    ONEID = "oneid"  # citizen's OneID (+ TOTP)
+    ONEID = "oneid"  # citizen's OneID
 
 
 class AdminUser(Base):
