@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "UZBMB Admin BFF",
-    "description": "Yagona adminka backend'i. Frontend faqat shu API bilan ishlaydi.",
+    "description": "Yagona adminka backend'i. Frontend faqat shu API bilan ishlaydi.\n\n* **Kirish:** `POST /api/v1/auth/login`, keyin `POST /api/v1/auth/mfa` (TOTP kod).\n  Sessiya `__Host-admin_session` HttpOnly cookie'sida turadi, frontend uni o'qimaydi.\n* **CSRF:** har bir POST, PUT, PATCH va DELETE so'rovida `X-CSRF-Token` sarlavhasi.\n  Token login javobida keladi, sahifa yangilansa `GET /api/v1/auth/session` beradi.\n* **Ruxsat:** har bir endpoint'da `x-permissions` (kerakli permission) ko'rsatilgan.\n  Ruxsat bo'lmasa `403 forbidden`.\n* **Step-up:** `x-step-up: true` endpoint'lar uchun TOTP so'nggi 5 daqiqada kiritilgan\n  bo'lishi kerak, aks holda `401 step_up_required`: `POST /api/v1/auth/step-up`, keyin\n  so'rovni qaytaring.\n* **Xato formati:** `{\"error\": {\"code\", \"message\", \"request_id\", \"details\"}}`. Mantiq\n  `code`ga qarab quriladi.\n* **Vaqt:** ISO 8601, UTC (`...Z`). ID'lar string.\n\nBatafsil: repo'dagi `docs/frontend.md`.\n",
     "version": "0.1.0"
   },
   "paths": {
@@ -24,7 +24,8 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/ready": {
@@ -55,7 +56,8 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/v1/auth/login": {
@@ -126,7 +128,8 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/v1/auth/mfa": {
@@ -197,7 +200,8 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/v1/auth/logout": {
@@ -231,7 +235,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ]
       }
     },
     "/api/v1/auth/session": {
@@ -262,7 +272,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
       }
     },
     "/api/v1/auth/sessions": {
@@ -303,7 +318,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
       }
     },
     "/api/v1/auth/sessions/{session_id}": {
@@ -368,7 +388,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ]
       }
     },
     "/api/v1/auth/password": {
@@ -442,7 +468,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ]
       }
     },
     "/api/v1/auth/totp/enroll": {
@@ -493,7 +525,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ]
       }
     },
     "/api/v1/auth/totp/confirm": {
@@ -564,7 +602,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ]
       }
     },
     "/api/v1/auth/step-up": {
@@ -635,7 +679,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ]
       }
     },
     "/api/v1/auth/oneid/start": {
@@ -659,7 +709,8 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/v1/auth/oneid/callback": {
@@ -729,7 +780,8 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/v1/me": {
@@ -770,7 +822,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
       }
     },
     "/api/v1/admin/users": {
@@ -915,7 +972,16 @@
             },
             "description": "Unprocessable Content"
           }
-        }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-permissions": [
+          "admin:users:read"
+        ],
+        "description": "**Permission:** `admin:users:read`"
       },
       "post": {
         "tags": [
@@ -984,7 +1050,18 @@
             },
             "description": "Unprocessable Content"
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:users:write"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:users:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       }
     },
     "/api/v1/admin/users/{user_id}": {
@@ -1057,7 +1134,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-permissions": [
+          "admin:users:read"
+        ],
+        "description": "**Permission:** `admin:users:read`"
       },
       "patch": {
         "tags": [
@@ -1148,7 +1234,18 @@
             },
             "description": "Unprocessable Content"
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:users:write"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:users:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       }
     },
     "/api/v1/admin/users/{user_id}/roles": {
@@ -1241,7 +1338,18 @@
             },
             "description": "Unprocessable Content"
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:users:write"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:users:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       }
     },
     "/api/v1/admin/users/{user_id}/scopes": {
@@ -1324,7 +1432,18 @@
             },
             "description": "Unprocessable Content"
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:users:write"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:users:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       }
     },
     "/api/v1/admin/users/{user_id}/reset-password": {
@@ -1407,7 +1526,18 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:users:security"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:users:security`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       }
     },
     "/api/v1/admin/users/{user_id}/reset-totp": {
@@ -1473,7 +1603,18 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:users:security"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:users:security`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       }
     },
     "/api/v1/admin/users/{user_id}/unlock": {
@@ -1539,7 +1680,18 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:users:security"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:users:security`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       }
     },
     "/api/v1/admin/roles": {
@@ -1584,7 +1736,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-permissions": [
+          "admin:roles:read"
+        ],
+        "description": "**Permission:** `admin:roles:read`"
       },
       "post": {
         "tags": [
@@ -1653,7 +1814,18 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:roles:write"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:roles:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       }
     },
     "/api/v1/admin/roles/{role_id}": {
@@ -1726,7 +1898,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-permissions": [
+          "admin:roles:read"
+        ],
+        "description": "**Permission:** `admin:roles:read`"
       },
       "patch": {
         "tags": [
@@ -1817,7 +1998,18 @@
             },
             "description": "Unprocessable Content"
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:roles:write"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:roles:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       },
       "delete": {
         "tags": [
@@ -1891,7 +2083,18 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "admin:roles:write"
+        ],
+        "x-step-up": true,
+        "description": "**Permission:** `admin:roles:write`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak."
       }
     },
     "/api/v1/admin/permissions": {
@@ -1932,7 +2135,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-permissions": [
+          "admin:roles:read"
+        ],
+        "description": "**Permission:** `admin:roles:read`"
       }
     },
     "/api/v1/audit": {
@@ -1941,7 +2153,7 @@
           "audit"
         ],
         "summary": "Audit log: kim, qachon, nima qildi (yangilari birinchi)",
-        "description": "Filtrlar aniq qiymat bo'yicha. `from` kiradi, `to` kirmaydi. Keyingi sahifa uchun javobdagi `next_cursor` `cursor` sifatida yuboriladi.",
+        "description": "Filtrlar aniq qiymat bo'yicha. `from` kiradi, `to` kirmaydi. Keyingi sahifa uchun javobdagi `next_cursor` `cursor` sifatida yuboriladi.\n\n**Permission:** `audit:logs:read`",
         "operationId": "audit_logs_list",
         "parameters": [
           {
@@ -2191,7 +2403,15 @@
             },
             "description": "Unprocessable Content"
           }
-        }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-permissions": [
+          "audit:logs:read"
+        ]
       }
     },
     "/api/v1/audit/export": {
@@ -2200,7 +2420,7 @@
           "audit"
         ],
         "summary": "Audit log'ni CSV faylga eksport qilish",
-        "description": "TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak (step-up). Bir soatda ko'pi bilan 5 ta eksport, bitta faylda ko'pi bilan 100 000 yozuv. Fayl UTF-8 (BOM bilan), eskisi birinchi.",
+        "description": "TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak (step-up). Bir soatda ko'pi bilan 5 ta eksport, bitta faylda ko'pi bilan 100 000 yozuv. Fayl UTF-8 (BOM bilan), eskisi birinchi.\n\n**Permission:** `audit:logs:export`\n\n**Step-up:** TOTP so'nggi 5 daqiqada kiritilgan bo'lishi kerak.",
         "operationId": "audit_logs_export",
         "requestBody": {
           "content": {
@@ -2264,7 +2484,17 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session": [],
+            "csrf": []
+          }
+        ],
+        "x-permissions": [
+          "audit:logs:export"
+        ],
+        "x-step-up": true
       }
     }
   },
@@ -4156,6 +4386,20 @@
           "type"
         ],
         "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-admin_session",
+        "description": "HttpOnly sessiya cookie'si: `POST /api/v1/auth/mfa` o'rnatadi."
+      },
+      "csrf": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token",
+        "description": "Login javobidagi yoki `GET /api/v1/auth/session`dagi `csrf_token`."
       }
     }
   },

@@ -20,7 +20,7 @@ from app.auth.csrf import UNSAFE_METHODS
 from app.auth.service import AuthService, RequestMeta
 from app.auth.sessions import SessionData
 from app.core.errors import AppError, ErrorCode
-from app.core.guards import mark_guard
+from app.core.guards import mark_guard, mark_step_up
 from app.core.metrics import RATE_LIMITED
 from app.core.request_id import get_request_id
 from app.core.time import Clock
@@ -126,4 +126,4 @@ def require_recent_mfa(max_age_s: int = 300) -> Callable[..., Awaitable[SessionD
             raise AppError(ErrorCode.STEP_UP_REQUIRED)
         return session
 
-    return mark_guard(dependency)
+    return mark_step_up(dependency)

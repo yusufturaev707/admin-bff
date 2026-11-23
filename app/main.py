@@ -57,6 +57,24 @@ OPENAPI_TAGS = [
     {"name": "audit", "description": "Audit log: kim, qachon, nima qildi; CSV eksport"},
 ]
 
+API_DESCRIPTION = """Yagona adminka backend'i. Frontend faqat shu API bilan ishlaydi.
+
+* **Kirish:** `POST /api/v1/auth/login`, keyin `POST /api/v1/auth/mfa` (TOTP kod).
+  Sessiya `__Host-admin_session` HttpOnly cookie'sida turadi, frontend uni o'qimaydi.
+* **CSRF:** har bir POST, PUT, PATCH va DELETE so'rovida `X-CSRF-Token` sarlavhasi.
+  Token login javobida keladi, sahifa yangilansa `GET /api/v1/auth/session` beradi.
+* **Ruxsat:** har bir endpoint'da `x-permissions` (kerakli permission) ko'rsatilgan.
+  Ruxsat bo'lmasa `403 forbidden`.
+* **Step-up:** `x-step-up: true` endpoint'lar uchun TOTP so'nggi 5 daqiqada kiritilgan
+  bo'lishi kerak, aks holda `401 step_up_required`: `POST /api/v1/auth/step-up`, keyin
+  so'rovni qaytaring.
+* **Xato formati:** `{"error": {"code", "message", "request_id", "details"}}`. Mantiq
+  `code`ga qarab quriladi.
+* **Vaqt:** ISO 8601, UTC (`...Z`). ID'lar string.
+
+Batafsil: repo'dagi `docs/frontend.md`.
+"""
+
 logger = get_logger(__name__)
 
 
@@ -168,7 +186,7 @@ def create_app(
     app = FastAPI(
         title="UZBMB Admin BFF",
         version=__version__,
-        description="Yagona adminka backend'i. Frontend faqat shu API bilan ishlaydi.",
+        description=API_DESCRIPTION,
         # FastAPI's own schema and docs routes are off: app.api.docs serves both,
         # open outside production and only with `admin:api:docs` in production.
         openapi_url=None,
@@ -192,7 +210,12 @@ def create_app(
     # outermost. Order from the outside: request id + access log, request-level
     # audit (sees every status, CSRF rejections included), CORS (so even
     # rejected requests get CORS headers), Origin check (CSRF), the app.
-    app.add_middleware(OriginCheckMiddleware, allowed_origin=settings.frontend_origin)
+    app.add_middleware(
+        OriginCheckMiddleware,
+        allowed_origin=settings.frontend_origin,
+        # Swagger UI's "Try it out" (app.api.docs); never in production.
+        allow_same_origin=not settings.is_production,
+    )
     if settings.frontend_origin is not None:
         app.add_middleware(
             CORSMiddleware,
@@ -221,4 +244,5 @@ def create_app(
     app.include_router(me.router)
     app.include_router(admin.router)
     app.include_router(audit.router)
+    docs.install_openapi(app)
     return app

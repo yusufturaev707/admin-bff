@@ -7,9 +7,25 @@ Frontend faqat BFF API bilan ishlaydi.
 - **Kirish.** Development'da ikkalasi ham login'siz ochiladi. Production'da
   `admin:api:docs` ruxsati kerak: avval adminkaga kiring, keyin shu brauzerda
   API domenidagi `/api/v1/docs`ni oching.
-- **"Try it out".** GET so'rovlar ishlaydi. POST, PUT va DELETE so'rovlarni
-  Swagger'dan yuborib bo'lmaydi, chunki CSRF tekshiruvi faqat frontend
-  origin'idan kelgan so'rovni qabul qiladi.
+- **Swagger'dan ishlash (development).** Sahifa tepasidagi panelga login,
+  parol va TOTP kodni kiritib "Kirish"ni bosing. Shundan keyin "Try it out"
+  barcha endpoint'larda ishlaydi, `X-CSRF-Token`ni sahifaning o'zi qo'shadi.
+  - "Step-up" tugmasi TOTP kodni qayta yuboradi: `x-step-up` endpoint'lari
+    uchun 5 daqiqa amal qiladi.
+  - Birinchi kirishda panel qolgan qadamlarni ko'rsatadi. Ular
+    `/auth/totp/enroll`, `/auth/totp/confirm` va `/auth/password` orqali
+    Swagger'ning o'zida bajariladi.
+  - Sahifani `http://localhost:8000` yoki HTTPS orqali oching. Boshqa
+    `http://` manzilda (masalan, LAN IP orqali) brauzer `Secure` cookie'ni
+    saqlamaydi va kirish ishlamaydi.
+- **Production'da Swagger faqat o'qish uchun.** Undan POST, PUT va DELETE
+  yuborib bo'lmaydi, chunki Origin tekshiruvi faqat frontend origin'ini qabul
+  qiladi.
+- **Har bir endpoint'da:**
+  - `security`: `session` cookie kerakmi va yozish so'rovida `csrf` sarlavhasi;
+  - `x-permissions`: kerakli permission (menyu va tugmalarni shunga qarab
+    yashiring);
+  - `x-step-up: true`: TOTP qayta so'raladi.
 - **Client.** Sxemadan `openapi-typescript` yoki `orval` bilan generatsiya
   qiling.
 

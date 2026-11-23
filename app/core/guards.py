@@ -9,11 +9,22 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 _GUARD_ATTR = "__admin_bff_guard__"
+_STEP_UP_ATTR = "__admin_bff_step_up__"
 
 
 def mark_guard[F: Callable[..., Any]](func: F, permissions: Iterable[str] = ()) -> F:
     setattr(func, _GUARD_ATTR, frozenset(permissions))
     return func
+
+
+def mark_step_up[F: Callable[..., Any]](func: F) -> F:
+    """A guard that needs a recent TOTP (shown as `x-step-up` in OpenAPI)."""
+    setattr(func, _STEP_UP_ATTR, True)
+    return mark_guard(func)
+
+
+def is_step_up(func: object) -> bool:
+    return getattr(func, _STEP_UP_ATTR, False) is True
 
 
 def guard_permissions(func: object) -> frozenset[str] | None:
