@@ -9,10 +9,10 @@ from fastapi import APIRouter, FastAPI, Query
 from pydantic import BaseModel
 
 from app.core.errors import AppError, ErrorCode
-from app.main import create_app
+from app.main import MAX_BODY_BYTES, create_app
 from app.settings import Settings
 from tests.conftest import Services
-from tests.helpers.client import app_client
+from tests.helpers.client import FRONTEND_ORIGIN, app_client
 
 router = APIRouter()
 
@@ -111,6 +111,44 @@ async def test_malformed_json_is_validation_error(error_client: httpx.AsyncClien
         "/_test/login", content=b"{not json", headers={"Content-Type": "application/json"}
     )
     _assert_error_shape(response, 422, "validation_error")
+
+
+def _login_body(username_length: int) -> bytes:
+    return b'{"username": "' + b"a" * username_length + b'", "password": "x", "attempts": 1}'
+
+
+async def test_body_over_the_limit_is_refused(error_client: httpx.AsyncClient) -> None:
+    # Section 11: the app enforces 1 MB itself, not only Nginx.
+    response = await error_client.post(
+        "/_test/login",
+        content=_login_body(MAX_BODY_BYTES),
+        headers={"Content-Type": "application/json"},
+    )
+    error = _assert_error_shape(response, 413, "validation_error")
+    assert error["message"] == "So'rov hajmi juda katta"
+    # The frontend can read the error: CORS wraps the limit.
+    assert response.headers["access-control-allow-origin"] == FRONTEND_ORIGIN
+
+
+async def test_chunked_body_over_the_limit_is_refused(error_client: httpx.AsyncClient) -> None:
+    # No Content-Length: the limit counts the bytes as they arrive.
+    async def chunks() -> AsyncIterator[bytes]:
+        for _ in range(3):
+            yield b"a" * (MAX_BODY_BYTES // 2)
+
+    response = await error_client.post(
+        "/_test/login", content=chunks(), headers={"Content-Type": "application/json"}
+    )
+    _assert_error_shape(response, 413, "validation_error")
+
+
+async def test_body_up_to_the_limit_is_read(error_client: httpx.AsyncClient) -> None:
+    body = _login_body(MAX_BODY_BYTES - 100)
+    assert len(body) <= MAX_BODY_BYTES
+    response = await error_client.post(
+        "/_test/login", content=body, headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 200
 
 
 async def test_unhandled_exception_is_hidden(error_client: httpx.AsyncClient) -> None:

@@ -64,12 +64,19 @@ _STATUS_TO_CODE: dict[int, ErrorCode] = {
     404: ErrorCode.NOT_FOUND,
     405: ErrorCode.METHOD_NOT_ALLOWED,
     409: ErrorCode.CONFLICT,
+    413: ErrorCode.VALIDATION_ERROR,
     422: ErrorCode.VALIDATION_ERROR,
     429: ErrorCode.RATE_LIMITED,
     502: ErrorCode.UPSTREAM_ERROR,
     503: ErrorCode.SYSTEM_UNAVAILABLE,
     504: ErrorCode.SYSTEM_UNAVAILABLE,
 }
+
+# The same text Nginx returns for an oversize body (deploy/nginx/admin-api.conf).
+BODY_TOO_LARGE = "So'rov hajmi juda katta"
+
+# A more precise message than the code's default, for statuses that share a code.
+_STATUS_MESSAGES: dict[int, str] = {413: BODY_TOO_LARGE}
 
 
 class ErrorBody(BaseModel):
@@ -181,6 +188,7 @@ async def _http_exception_handler(request: Request, exc: Exception) -> JSONRespo
         request,
         _code_for_status(status_code),
         status_code=status_code,
+        message=_STATUS_MESSAGES.get(status_code),
         headers=exc.headers,
     )
 

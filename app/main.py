@@ -24,6 +24,7 @@ from app.auth.csrf import OriginCheckMiddleware
 from app.auth.dependencies import CSRF_HEADER
 from app.auth.oneid import OneIdClient, build_oneid_client
 from app.auth.service import build_auth_service
+from app.core.body_limit import BodySizeLimitMiddleware
 from app.core.db import (
     create_engine,
     create_sessionmaker,
@@ -47,6 +48,9 @@ from app.rbac.service import AdminService
 from app.settings import Settings, get_settings
 
 OPENAPI_URL = docs.OPENAPI_URL
+
+# Section 11: no request body above 1 MB (app.core.body_limit).
+MAX_BODY_BYTES = 1024 * 1024
 
 OPENAPI_TAGS = [
     {"name": "health", "description": "Servis holati (liveness va readiness)"},
@@ -246,13 +250,15 @@ def create_app(
     # Starlette wraps middleware in reverse order: the last added is the
     # outermost. Order from the outside: request id + access log, request-level
     # audit (sees every status, CSRF rejections included), CORS (so even
-    # rejected requests get CORS headers), Origin check (CSRF), the app.
+    # rejected requests get CORS headers), body size limit, Origin check (CSRF),
+    # the app.
     app.add_middleware(
         OriginCheckMiddleware,
         allowed_origin=settings.frontend_origin,
         # Swagger UI's "Try it out" (app.api.docs); never in production.
         allow_same_origin=not settings.is_production,
     )
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
     if settings.frontend_origin is not None:
         app.add_middleware(
             CORSMiddleware,
