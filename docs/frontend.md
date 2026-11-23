@@ -1,8 +1,17 @@
 # Frontend uchun qo'llanma
 
-Frontend faqat BFF API bilan ishlaydi. Sxema: `/api/v1/openapi.json`
-(production'da yopiq), repo'dagi nusxasi: `openapi/v1.json`. Client'ni sxemadan
-`openapi-typescript` yoki `orval` bilan generatsiya qiling.
+Frontend faqat BFF API bilan ishlaydi.
+
+- **Swagger UI:** `/api/v1/docs`. Sxema: `/api/v1/openapi.json`, repo'dagi
+  nusxasi: `openapi/v1.json`.
+- **Kirish.** Development'da ikkalasi ham login'siz ochiladi. Production'da
+  `admin:api:docs` ruxsati kerak: avval adminkaga kiring, keyin shu brauzerda
+  API domenidagi `/api/v1/docs`ni oching.
+- **"Try it out".** GET so'rovlar ishlaydi. POST, PUT va DELETE so'rovlarni
+  Swagger'dan yuborib bo'lmaydi, chunki CSRF tekshiruvi faqat frontend
+  origin'idan kelgan so'rovni qabul qiladi.
+- **Client.** Sxemadan `openapi-typescript` yoki `orval` bilan generatsiya
+  qiling.
 
 Bu hujjatda autentifikatsiya (1-bosqich), ruxsatlar va adminlarni
 boshqarish (2-bosqich) hamda audit log (3-bosqich) bor. Tizimlar uchun meta

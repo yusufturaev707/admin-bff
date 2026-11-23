@@ -60,7 +60,10 @@ curl -i http://127.0.0.1:8000/ready     # 200, DB yoki Redis ishlamasa 503
 ```
 
 Production'dan tashqari muhitda OpenAPI sxemasi
-`http://127.0.0.1:8000/api/v1/openapi.json` manzilida. Production'da u yopiq.
+`http://127.0.0.1:8000/api/v1/openapi.json`, Swagger UI esa
+`http://127.0.0.1:8000/api/v1/docs` manzilida. Swagger assetlari lokal
+(`app/static/swagger-ui/`, CDN ishlatilmaydi). Production'da ikkalasi faqat
+`admin:api:docs` ruxsati bor adminga ochiladi.
 
 ## Tekshiruvlar
 

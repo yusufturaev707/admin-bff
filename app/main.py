@@ -14,7 +14,7 @@ from fastapi.routing import APIRoute
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app import __version__
-from app.api import health
+from app.api import docs, health
 from app.api.v1 import admin, audit, me
 from app.audit.middleware import AuditRequestMiddleware
 from app.audit.service import AuditLogService
@@ -40,7 +40,7 @@ from app.rbac.route_check import validate_access
 from app.rbac.service import AdminService
 from app.settings import Settings, get_settings
 
-OPENAPI_URL = "/api/v1/openapi.json"
+OPENAPI_URL = docs.OPENAPI_URL
 
 OPENAPI_TAGS = [
     {"name": "health", "description": "Servis holati (liveness va readiness)"},
@@ -166,9 +166,9 @@ def create_app(
         title="UZBMB Admin BFF",
         version=__version__,
         description="Yagona adminka backend'i. Frontend faqat shu API bilan ishlaydi.",
-        # The schema endpoint is closed in production; Phase 2 serves it (and
-        # locally hosted Swagger UI) only to admins with `admin:api:docs`.
-        openapi_url=None if settings.is_production else OPENAPI_URL,
+        # FastAPI's own schema and docs routes are off: app.api.docs serves both,
+        # open outside production and only with `admin:api:docs` in production.
+        openapi_url=None,
         docs_url=None,
         redoc_url=None,
         swagger_ui_oauth2_redirect_url=None,
@@ -210,6 +210,8 @@ def create_app(
     app.add_middleware(RequestContextMiddleware)
 
     app.include_router(health.router)
+    app.include_router(docs.router)
+    app.mount(docs.STATIC_URL, docs.static_files(), name="swagger-ui")
     app.include_router(auth_router.router)
     app.include_router(me.router)
     app.include_router(admin.router)

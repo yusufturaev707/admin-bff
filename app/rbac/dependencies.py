@@ -18,7 +18,14 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from app.audit.sink import AuditEvent, AuditOutcome, AuditSink
-from app.auth.dependencies import AuthenticatedSession, request_meta, require_recent_mfa
+from app.auth.dependencies import (
+    AuthenticatedSession,
+    current_session,
+    get_auth_service,
+    request_meta,
+    require_authenticated,
+    require_recent_mfa,
+)
 from app.core.errors import AppError, ErrorCode
 from app.core.guards import mark_guard
 from app.rbac.permissions import PERMISSION_RE
@@ -98,6 +105,27 @@ def require_any(*permissions: str) -> Callable[..., Awaitable[Principal]]:
 
     dependency.__name__ = f"require_any[{','.join(checked)}]"
     return mark_guard(dependency, checked)
+
+
+def require_in_production(permission: str) -> Callable[..., Awaitable[None]]:
+    """Open outside production (like the OpenAPI schema there), `require(permission)`
+    in production. For the API docs: the frontend developer reads them on a
+    development instance without signing in."""
+    (checked,) = _checked((permission,))
+
+    async def dependency(request: Request) -> None:
+        if not request.app.state.settings.is_production:
+            return
+        # GET only: no CSRF token is involved.
+        service = await get_auth_service(request)
+        session = await require_authenticated(await current_session(request, service))
+        principal = await get_principal(request, session)
+        if not principal.has(checked):
+            await _audit_denied(request, principal, [checked])
+            raise AppError(ErrorCode.FORBIDDEN)
+
+    dependency.__name__ = f"require_in_production[{checked}]"
+    return mark_guard(dependency, [checked])
 
 
 def ensure_in_scope(principal: Principal, scope_type: str, value: str | None) -> None:
