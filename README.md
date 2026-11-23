@@ -156,7 +156,12 @@ sudo /opt/admin-bff/deploy/deploy.sh
 uv run python -m app.cli export-openapi [--check]
 uv run python -m app.cli create-superadmin --username <login>   # parol interaktiv so'raladi
 uv run python -m app.cli unlock-login --username <login> [--ip <ip>]
+uv run python -m app.cli reencrypt-totp                          # TOTP_ENC_KEY rotatsiyasidan keyin
+uv run python -m app.cli reset-totp --username <login>           # yoki --all --yes (kalit yo'qolsa)
 ```
+
+Kalitlarni saqlash, zaxiralash va rotatsiya qilish tartibi:
+[`docs/security.md`](docs/security.md).
 
 Keyingi bosqichlarda qo'shiladi: `sync-permissions`, `rotate-keys`,
 `verify-audit`.
