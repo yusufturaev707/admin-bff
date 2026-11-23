@@ -149,7 +149,11 @@ Xavfli amal oldidan admin TOTP kodni qayta kiritishi kerak bo'lishi mumkin:
 
 Step-up 5 daqiqa amal qiladi.
 
-## Xato kodlari (auth)
+## Xato kodlari
+
+Hamma joyda ishlatiladigan kodlar shu jadvalda. Keyingi bosqichlarda
+`not_found`, `system_unavailable`, `upstream_error` va `internal_error`
+haqida ham batafsil yoziladi.
 
 | `code` | Status | Frontend nima qiladi |
 | --- | --- | --- |
@@ -161,3 +165,5 @@ Step-up 5 daqiqa amal qiladi.
 | `validation_error` | 422 | `details.fields` bo'yicha formadagi maydon xatolari |
 | `conflict` | 409 | masalan, TOTP allaqachon ulangan |
 | `rate_limited` | 429 | `Retry-After` soniya kutish |
+| `method_not_allowed` | 405 | client'dagi xato: endpoint bu HTTP metodni qabul qilmaydi, `Allow` sarlavhasiga qarang |
+| `internal_error` | 500 | "Ichki xatolik" va `request_id`ni ko'rsatish |
