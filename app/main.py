@@ -14,11 +14,13 @@ from fastapi.routing import APIRoute
 
 from app import __version__
 from app.api import health
+from app.api.v1 import admin, me
 from app.audit.sink import AuditSink, LogAuditSink
 from app.auth import router as auth_router
 from app.auth.csrf import OriginCheckMiddleware
 from app.auth.dependencies import CSRF_HEADER
 from app.auth.oneid import OneIdClient, build_oneid_client
+from app.auth.passwords import PasswordService
 from app.auth.service import build_auth_service
 from app.core.db import create_engine, create_sessionmaker, ping_database
 from app.core.errors import install_exception_handlers
@@ -27,12 +29,21 @@ from app.core.redis import create_redis, ping_redis
 from app.core.request_id import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.routes import validate_routes
 from app.core.time import Clock, utcnow
+from app.rbac.principal import PrincipalLoader
+from app.rbac.registry import PermissionRegistry, build_registry
+from app.rbac.route_check import validate_access
+from app.rbac.service import AdminService
 from app.settings import Settings, get_settings
 
 OPENAPI_URL = "/api/v1/openapi.json"
 
 OPENAPI_TAGS = [
     {"name": "health", "description": "Servis holati (liveness va readiness)"},
+    {
+        "name": "me",
+        "description": "Joriy admin: permission'lar va hududlar (menyu shundan quriladi)",
+    },
+    {"name": "admin", "description": "Adminlar, rollar va permission'larni boshqarish"},
     {
         "name": "auth",
         "description": "Kirish: login + parol yoki OneID, keyin TOTP; sessiya, CSRF, step-up",
@@ -62,18 +73,34 @@ def _lifespan(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Runs after every router is included: a bad route table stops startup.
         validate_routes(app)
+        registry: PermissionRegistry = app.state.registry
+        # Deny-by-default (section 7). Tests may add their own public test routes.
+        validate_access(
+            app, registry, extra_public=getattr(app.state, "extra_public_paths", frozenset())
+        )
         # OneID stays off unless enabled; enabled without a client, startup stops.
         oneid = (oneid_client or build_oneid_client(settings)) if settings.oneid_enabled else None
         engine = create_engine(settings)
         redis = create_redis(settings)
         try:
-            app.state.auth_service = build_auth_service(
-                settings,
-                create_sessionmaker(engine),
-                redis,
-                clock=clock,
-                audit=audit_sink or LogAuditSink(),
-                oneid_client=oneid,
+            audit = audit_sink or LogAuditSink()
+            db = create_sessionmaker(engine)
+            auth_service = build_auth_service(
+                settings, db, redis, clock=clock, audit=audit, oneid_client=oneid
+            )
+            loader = PrincipalLoader(db, redis, prefix=settings.redis_key_prefix)
+            app.state.audit_sink = audit
+            app.state.auth_service = auth_service
+            app.state.principal_loader = loader
+            app.state.admin_service = AdminService(
+                settings=settings,
+                db=db,
+                registry=registry,
+                loader=loader,
+                sessions=auth_service.sessions,
+                limiter=auth_service.limiter,
+                passwords=PasswordService(settings),
+                audit=audit,
             )
             app.state.readiness_checks = {
                 "db": partial(ping_database, engine),
@@ -119,6 +146,7 @@ def create_app(
     )
     app.state.settings = settings
     app.state.clock = clock
+    app.state.registry = build_registry()
 
     install_exception_handlers(app)
 
@@ -146,4 +174,6 @@ def create_app(
 
     app.include_router(health.router)
     app.include_router(auth_router.router)
+    app.include_router(me.router)
+    app.include_router(admin.router)
     return app

@@ -46,6 +46,10 @@ async def login(body: LoginBody) -> dict[str, str]:
 async def error_client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
     app: FastAPI = create_app(settings)
     app.include_router(router)
+    # Test-only routes without auth (deny-by-default would refuse them).
+    app.state.extra_public_paths = frozenset(
+        {"/_test/conflict", "/_test/crash", "/_test/items", "/_test/login"}
+    )
     async with app_client(app) as client:
         yield client
 
