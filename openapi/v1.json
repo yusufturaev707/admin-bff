@@ -3284,7 +3284,7 @@
               }
             ],
             "title": "Code",
-            "description": "TOTP kod. Faqat TOTP o'chirilgan development muhitida yuborilmaydi"
+            "description": "TOTP kod. TOTP o'chirilgan bo'lsa (TOTP_REQUIRED=false) yuborilmaydi"
           }
         },
         "additionalProperties": false,

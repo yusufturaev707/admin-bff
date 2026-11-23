@@ -135,7 +135,7 @@ mavjud bo'lsa) `.env` umuman o'qilmaydi.
 | `SESSION_REQUESTS_PER_MINUTE` | `300` | bitta sessiyadan daqiqasiga so'rovlar soni, oshsa `429` |
 | `ARGON2_TIME_COST`, `ARGON2_MEMORY_COST_KIB`, `ARGON2_PARALLELISM` | `3`, `65536`, `4` | production'da kamida m=19 MiB, t=2 |
 | `TOTP_ISSUER` | `UZBMB Admin` | autentifikator ilovasida ko'rinadigan nom |
-| `TOTP_REQUIRED` | `true` | `false`: kirish faqat parol bilan, step-up so'ralmaydi. Faqat development; production'da ilova ishga tushmaydi |
+| `TOTP_REQUIRED` | `true` | `false`: kirish faqat parol bilan, step-up so'ralmaydi. Hozir hamma joyda `false` (egasining qarori, `docs/security.md`) |
 | `ONEID_ENABLED` | `false` | OneID shablon, client hali yozilmagan (`app/auth/oneid.py`) |
 
 Secret'lar production'da faqat systemd `LoadCredential=` orqali beriladi. Kodga,

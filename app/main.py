@@ -159,6 +159,9 @@ def _lifespan(
                 "db": partial(ping_database, engine),
                 "redis": partial(ping_redis, redis),
             }
+            if not settings.totp_required:
+                # The owner's decision (docs/security.md); stays visible in the logs.
+                logger.warning("totp_disabled", detail="sign-in and step-up without TOTP")
             logger.info("startup", version=__version__, env=settings.app_env)
             yield
         finally:

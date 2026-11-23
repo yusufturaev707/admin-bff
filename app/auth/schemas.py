@@ -117,7 +117,7 @@ class PasswordChangeRequest(_Request):
     code: str | None = Field(
         default=None,
         pattern=r"^[0-9]{6}$",
-        description="TOTP kod. Faqat TOTP o'chirilgan development muhitida yuborilmaydi",
+        description="TOTP kod. TOTP o'chirilgan bo'lsa (TOTP_REQUIRED=false) yuborilmaydi",
     )
 
 

@@ -9,7 +9,7 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 | --- | --- |
 | Parolni taxmin qilish, brute force | Argon2id. Username bo'yicha 5 ta xato urinishdan keyin 15 daqiqa blok, IP bo'yicha 10 daqiqada 20 xatodan keyin 30 daqiqa. Nginx'da ham `limit_req` bor |
 | Hisob mavjudligini aniqlash (user enumeration) | Login topilmasa ham soxta hash tekshiriladi va xabar bir xil chiqadi. Mavjud bo'lmagan login ham xuddi shunday bloklanadi |
-| Parol o'g'irlanishi | TOTP har doim talab qilinadi, OneID'dan keyin ham. Kodni qayta ishlatib bo'lmaydi |
+| Parol o'g'irlanishi | TOTP talab qilinadi, OneID'dan keyin ham. Kodni qayta ishlatib bo'lmaydi. **Hozir o'chiq** (pastda) |
 | Sessiyani o'g'irlash yoki unga o'z ID'sini qo'yish | Sessiya serverda saqlanadi. Cookie `__Host-` prefiksli, `HttpOnly`, `Secure`, `SameSite=Strict`. Har login'da yangi ID beriladi. 30 daqiqa harakatsizlik yoki 12 soatdan keyin sessiya tugaydi |
 | CSRF | `Origin` aynan frontend bilan solishtiriladi, `X-CSRF-Token` sessiyadagi token bilan `compare_digest` orqali tekshiriladi |
 | DB yoki DB backup sizib chiqishi | Parol va recovery code Argon2id hash ko'rinishida. TOTP secret AES-256-GCM bilan shifrlangan, kalit DB'da emas. PINFL faqat HMAC hash sifatida saqlanadi |
@@ -36,6 +36,18 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 - **Superadmin.** `superadmin` tizim roli (`*:*:*`) faqat CLI orqali beriladi.
   U API orqali tahrirlanmaydi va o'chirilmaydi. Oxirgi faol superadminni
   bloklab ham, rolidan ayirib ham bo'lmaydi.
+- **TOTP hozir o'chiq.** Egasi 2026-11-23 da TOTP'ni production'da ham
+  o'chirishga qaror qildi (`TOTP_REQUIRED=false`). Shu sababli kirish faqat
+  parol bilan, step-up esa so'ralmaydi. Parol o'g'irlansa, hisobni faqat
+  quyidagilar himoya qiladi:
+  - bloklash qoidalari;
+  - Argon2id;
+  - Nginx IP allowlist (faqat bino ichki tarmog'i).
+
+  Servis ishga tushganda log'ga `totp_disabled` ogohlantirishi yoziladi, har
+  bir login audit yozuvida esa `details.totp_required: false` bo'ladi.
+  Yoqish uchun `TOTP_REQUIRED=true` qilinadi va servis qayta ishga
+  tushiriladi. TOTP ulanmagan adminlar keyingi kirishda uni ulaydi.
 - **Step-up.** Admin va rollardagi har bir o'zgarish TOTP so'nggi 5 daqiqa
   ichida kiritilgan bo'lishini talab qiladi. Spetsifikatsiya buni faqat xavfli
   amallar uchun talab qiladi, lekin bu endpoint'lar kim nima qila olishini

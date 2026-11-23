@@ -107,9 +107,9 @@ class Settings(BaseSettings):
     # Production: systemd credential `pinfl_hmac_key`.
     pinfl_hmac_key: SecretStr | None = None
     totp_issuer: str = Field(default="UZBMB Admin", min_length=1, max_length=64)
-    # Second factor at sign-in and step-up (section 6). `false` (development
-    # only, e.g. for the frontend developer): password alone opens a full
-    # session and no step-up is asked. Production refuses to start with it.
+    # Second factor at sign-in and step-up (section 6). `false`: password alone
+    # opens a full session and no step-up is asked. The owner turned it off,
+    # production included, on 2026-11-23; startup logs a warning while it is off.
     totp_required: bool = True
 
     session_idle_timeout_s: int = Field(default=30 * 60, ge=60, le=24 * 3600)
@@ -215,8 +215,6 @@ class Settings(BaseSettings):
                 or self.argon2_time_cost < _ARGON2_MIN_TIME_COST
             ):
                 raise ValueError("production requires Argon2id m >= 19 MiB and t >= 2")
-            if not self.totp_required:
-                raise ValueError("production requires TOTP_REQUIRED=true (section 6)")
         return self
 
     @model_validator(mode="after")

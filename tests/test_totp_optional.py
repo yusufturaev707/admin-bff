@@ -1,10 +1,9 @@
-"""TOTP_REQUIRED=false (development only): password alone, no step-up."""
+"""TOTP_REQUIRED=false: password alone, no step-up (the owner's decision)."""
 
 from collections.abc import AsyncIterator
 
 import httpx
 import pytest
-from pydantic import ValidationError
 
 from app.main import create_app
 from app.settings import Settings
@@ -80,14 +79,14 @@ async def test_the_code_is_still_needed_when_totp_is_on(
     assert response.json()["error"]["details"]["fields"][0]["type"] == "invalid_code"
 
 
-def test_production_refuses_to_run_without_totp(settings: Settings) -> None:
-    with pytest.raises(ValidationError, match="TOTP_REQUIRED"):
-        Settings.model_validate(
-            {
-                **settings.model_dump(),
-                "app_env": "production",
-                "argon2_time_cost": 2,
-                "argon2_memory_cost_kib": 19456,
-                "totp_required": False,
-            }
-        )
+def test_production_may_run_without_totp(settings: Settings) -> None:
+    production = Settings.model_validate(
+        {
+            **settings.model_dump(),
+            "app_env": "production",
+            "argon2_time_cost": 2,
+            "argon2_memory_cost_kib": 19456,
+            "totp_required": False,
+        }
+    )
+    assert not production.totp_required
