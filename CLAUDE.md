@@ -447,7 +447,7 @@ Frontend dasturchi faqat `/api/v1/openapi.json` sxemasi bilan ishlaydi. Shuning 
 {"error": {"code": "forbidden", "message": "Bu amal uchun ruxsat yo'q", "request_id": "...", "details": {}}}
 ```
 
-Xato kodlari: `not_authenticated`, `session_expired`, `forbidden`, `step_up_required`, `csrf_failed`, `not_found`, `validation_error`, `conflict`, `rate_limited`, `system_unavailable`, `upstream_error`, `internal_error`. Tizim qaytargan xato matni frontendga o'zgarmasdan uzatilmaydi.
+Xato kodlari: `not_authenticated`, `session_expired`, `forbidden`, `step_up_required`, `csrf_failed`, `not_found`, `method_not_allowed` (405), `validation_error`, `conflict`, `rate_limited`, `system_unavailable`, `upstream_error`, `internal_error`. Tizim qaytargan xato matni frontendga o'zgarmasdan uzatilmaydi.
 
 **Meta endpoint'lar.** Frontend menyu, jadval va formalarni shular asosida o'zi quradi:
 
