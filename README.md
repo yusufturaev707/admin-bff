@@ -129,6 +129,8 @@ mavjud bo'lsa) `.env` umuman o'qilmaydi.
 | `SESSION_IDLE_TIMEOUT_S`, `SESSION_ABSOLUTE_TIMEOUT_S` | `1800`, `43200` | sessiya: 30 daqiqa harakatsizlik, 12 soat jami |
 | `SESSION_REQUESTS_PER_MINUTE` | `300` | bitta sessiyadan daqiqasiga so'rovlar soni, oshsa `429` |
 | `ARGON2_TIME_COST`, `ARGON2_MEMORY_COST_KIB`, `ARGON2_PARALLELISM` | `3`, `65536`, `4` | production'da kamida m=19 MiB, t=2 |
+| `ARGON2_MAX_CONCURRENCY` | `1` | bitta worker'da bir vaqtda nechta Argon2 tekshiruvi. Har biri `ARGON2_MEMORY_COST_KIB` xotira oladi, hisob `deploy/gunicorn.conf.py`da |
+| `GUNICORN_WORKERS` | `min(CPU, 4)` | worker'lar soni. Oshirilsa, `MemoryMax` ham oshiriladi (`deploy/gunicorn.conf.py`) |
 | `ONEID_ENABLED` | `false` | OneID shablon, client hali yozilmagan (`app/auth/oneid.py`) |
 
 Secret'lar production'da faqat systemd `LoadCredential=` orqali beriladi. Kodga,

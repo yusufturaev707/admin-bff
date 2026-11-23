@@ -18,7 +18,13 @@ bind = "unix:/run/admin-bff/bff.sock"
 umask = 0o007
 
 worker_class = "uvicorn_worker.UvicornWorker"
-workers = int(os.environ.get("GUNICORN_WORKERS", min(multiprocessing.cpu_count() * 2, 8)))
+# Memory budget (MemoryMax=1G in admin-bff.service). Measured: a worker takes
+# about 90 MiB, plus ARGON2_MEMORY_COST_KIB (64 MiB) for every Argon2 check it
+# runs at once (ARGON2_MAX_CONCURRENCY, 1 by default, app/auth/passwords.py).
+# 4 workers peak at about 4 * (90 + 64) = 620 MiB. The workers are async and
+# mostly wait on I/O, so 4 are plenty for the admin panel. Raising either
+# number means raising MemoryMax too.
+workers = int(os.environ.get("GUNICORN_WORKERS", min(multiprocessing.cpu_count(), 4)))
 
 # HUP (systemctl reload) restarts workers gracefully with the new code; this
 # only works when the app is NOT preloaded in the arbiter.

@@ -84,7 +84,8 @@ class AuthService:
     ) -> None:
         self._settings = settings
         self._db = db
-        self._passwords = passwords
+        # Shared with AdminService (app.main), so one worker has one Argon2 limit.
+        self.passwords = passwords
         self.sessions = sessions
         self._one_time = one_time
         self.limiter = limiter
@@ -259,14 +260,14 @@ class AuthService:
                 check_password_policy(new_password, username=user.username)
             except PasswordPolicyError as exc:
                 raise field_error(("body", "new_password"), exc.reason, exc.message) from exc
-            if not await self._passwords.verify(user.password_hash, old_password):
+            if not await self.passwords.verify(user.password_hash, old_password):
                 wrong_password = True
-            elif await self._passwords.verify(user.password_hash, new_password):
+            elif await self.passwords.verify(user.password_hash, new_password):
                 raise field_error(
                     ("body", "new_password"), "password_reused", "Yangi parol eskisidan farq qilsin"
                 )
             else:
-                user.password_hash = await self._passwords.hash(new_password)
+                user.password_hash = await self.passwords.hash(new_password)
                 user.password_changed_at = self._clock()
                 user.must_change_password = False
         if wrong_password:

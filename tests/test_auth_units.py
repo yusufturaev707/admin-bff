@@ -1,9 +1,13 @@
 """Unit tests: crypto, password policy, TOTP, recovery codes, auth settings."""
 
+import asyncio
 import base64
 import secrets
+import threading
+import time
 
 import pytest
+from argon2 import PasswordHasher
 from pydantic import SecretStr, ValidationError
 
 from app.auth.models import normalize_username
@@ -48,6 +52,36 @@ def test_weaker_argon2_parameters_mean_rehash(settings: Settings) -> None:
     weak = PasswordService(settings)
     strong = PasswordService(settings.model_copy(update={"argon2_time_cost": 2}))
     assert strong.needs_rehash(weak._hasher.hash("x"))
+
+
+class _SlowHasher:
+    """Wraps the real hasher and records how many hashes run at once."""
+
+    def __init__(self, inner: PasswordHasher) -> None:
+        self._inner = inner
+        self._guard = threading.Lock()
+        self.running = 0
+        self.peak = 0
+
+    def hash(self, password: str) -> str:
+        with self._guard:
+            self.running += 1
+            self.peak = max(self.peak, self.running)
+        time.sleep(0.05)
+        with self._guard:
+            self.running -= 1
+        return self._inner.hash(password)
+
+
+async def test_argon2_checks_at_once_are_bounded(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Each check holds ARGON2_MEMORY_COST_KIB; a burst must not run one per thread.
+    service = PasswordService(settings.model_copy(update={"argon2_max_concurrency": 2}))
+    slow = _SlowHasher(service._hasher)
+    monkeypatch.setattr(service, "_hasher", slow)
+    await asyncio.gather(*(service.hash(secrets.token_urlsafe(16)) for _ in range(6)))
+    assert slow.peak == 2
 
 
 @pytest.mark.parametrize(

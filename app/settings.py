@@ -108,6 +108,9 @@ class Settings(BaseSettings):
     argon2_time_cost: int = Field(default=3, ge=1, le=10)
     argon2_memory_cost_kib: int = Field(default=64 * 1024, ge=8, le=1024 * 1024)
     argon2_parallelism: int = Field(default=4, ge=1, le=16)
+    # Argon2 checks running at once in one worker; each holds
+    # ARGON2_MEMORY_COST_KIB of memory. Memory budget: deploy/gunicorn.conf.py.
+    argon2_max_concurrency: int = Field(default=1, ge=1, le=16)
 
     # --- OneID (template, section 6) ---
     # The client itself is not implemented yet (TODO(owner): OneID integration

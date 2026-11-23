@@ -106,6 +106,7 @@ IPAddressDeny=any
 IPAddressAllow=localhost
 # BFF diskka hech narsa yozmaydi (loglar journald'da), shuning uchun
 # ReadWritePaths kerak emas.
+# Xotira hisobi (worker'lar soni va Argon2): deploy/gunicorn.conf.py.
 MemoryMax=1G
 TasksMax=256
 

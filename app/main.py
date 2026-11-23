@@ -24,7 +24,6 @@ from app.auth import router as auth_router
 from app.auth.csrf import OriginCheckMiddleware
 from app.auth.dependencies import CSRF_HEADER
 from app.auth.oneid import OneIdClient, build_oneid_client
-from app.auth.passwords import PasswordService
 from app.auth.service import build_auth_service
 from app.core.db import (
     create_engine,
@@ -166,7 +165,8 @@ def _lifespan(
                 loader=loader,
                 sessions=auth_service.sessions,
                 limiter=auth_service.limiter,
-                passwords=PasswordService(settings),
+                # The same instance: one Argon2 limit per worker.
+                passwords=auth_service.passwords,
                 audit=audit,
             )
             app.state.audit_log_service = AuditLogService(

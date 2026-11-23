@@ -67,15 +67,22 @@ class PasswordService:
         # Verified when the user does not exist, so a missing account takes as
         # long as a wrong password (no user enumeration through timing).
         self._dummy_hash = self._hasher.hash(secrets.token_urlsafe(24))
+        # Every check holds ARGON2_MEMORY_COST_KIB of memory while it runs. Without
+        # a bound, a burst of logins runs one check per thread-pool thread and can
+        # push the service past MemoryMax (deploy/gunicorn.conf.py has the
+        # budget); the extra requests wait here instead.
+        self._slots = asyncio.Semaphore(settings.argon2_max_concurrency)
 
     async def hash(self, password: str) -> str:
-        return await asyncio.to_thread(self._hasher.hash, password)
+        async with self._slots:
+            return await asyncio.to_thread(self._hasher.hash, password)
 
     async def verify(self, password_hash: str | None, password: str) -> bool:
         """Constant-ish time: always performs one Argon2 verification."""
         target = password_hash if password_hash is not None else self._dummy_hash
         try:
-            await asyncio.to_thread(self._hasher.verify, target, password)
+            async with self._slots:
+                await asyncio.to_thread(self._hasher.verify, target, password)
         except (VerificationError, InvalidHashError):
             return False
         return password_hash is not None
