@@ -7,7 +7,7 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 
 | Tahdid | Himoya |
 | --- | --- |
-| Parolni taxmin qilish, brute force | Argon2id. Username bo'yicha 5 ta xato urinishdan keyin 15 daqiqa blok, IP bo'yicha 10 daqiqada 20 xatodan keyin 30 daqiqa. Nginx'da ham `limit_req` bor |
+| Parolni taxmin qilish, brute force | Argon2id. Username bo'yicha 5 ta xato urinishdan keyin 15 daqiqa blok, IP bo'yicha 10 daqiqada 20 xatodan keyin 30 daqiqa. Nginx'da ham `limit_req` bor. IP bo'yicha qoidalar har bir admin API'ga o'z IP manzili bilan kirishiga tayanadi (egasi tasdiqladi, 2026-11-23). Agar adminlar bitta NAT yoki proxy orqali kira boshlasa, bitta odamning xatolari hammani bloklaydi: bu qoidalar qayta ko'rib chiqiladi |
 | Hisob mavjudligini aniqlash (user enumeration) | Login topilmasa ham soxta hash tekshiriladi va xabar bir xil chiqadi. Mavjud bo'lmagan login ham xuddi shunday bloklanadi |
 | Parol o'g'irlanishi | **Ikkinchi faktor yo'q** (TOTP egasining qarori bilan olib tashlangan, pastda). Parol o'g'irlansa, hisobni bloklash qoidalari, Argon2id va Nginx IP allowlist himoya qiladi |
 | Sessiyani o'g'irlash yoki unga o'z ID'sini qo'yish | Sessiya serverda saqlanadi. Cookie `__Host-` prefiksli, `HttpOnly`, `Secure`, `SameSite=Strict`. Har login'da yangi ID beriladi. 30 daqiqa harakatsizlik yoki 12 soatdan keyin sessiya tugaydi |
