@@ -19,6 +19,7 @@ from app.auth.csrf import UNSAFE_METHODS
 from app.auth.service import AuthService, RequestMeta
 from app.auth.sessions import SessionData
 from app.core.errors import AppError, ErrorCode
+from app.core.guards import mark_guard
 from app.core.request_id import get_request_id
 from app.core.time import Clock
 
@@ -88,6 +89,7 @@ async def current_session(request: Request, service: AuthServiceDep) -> SessionD
     return session
 
 
+mark_guard(current_session)
 CurrentSession = Annotated[SessionData, Depends(current_session)]
 
 
@@ -101,6 +103,7 @@ async def require_authenticated(session: CurrentSession) -> SessionData:
     return session
 
 
+mark_guard(require_authenticated)
 AuthenticatedSession = Annotated[SessionData, Depends(require_authenticated)]
 
 
@@ -114,4 +117,4 @@ def require_recent_mfa(max_age_s: int = 300) -> Callable[..., Awaitable[SessionD
             raise AppError(ErrorCode.STEP_UP_REQUIRED)
         return session
 
-    return dependency
+    return mark_guard(dependency)
