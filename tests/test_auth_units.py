@@ -10,10 +10,11 @@ import pytest
 from argon2 import PasswordHasher
 from pydantic import SecretStr, ValidationError
 
+from app.auth.lockout import BUSY_RETRY_AFTER_S, LoginLimiter
 from app.auth.models import normalize_username
 from app.auth.passwords import PasswordPolicyError, PasswordService, check_password_policy
 from app.settings import Settings
-from tests.conftest import random_key
+from tests.conftest import Services, random_key
 
 
 @pytest.mark.parametrize(
@@ -82,6 +83,36 @@ async def test_argon2_checks_at_once_are_bounded(
     monkeypatch.setattr(service, "_hasher", slow)
     await asyncio.gather(*(service.hash(secrets.token_urlsafe(16)) for _ in range(6)))
     assert slow.peak == 2
+
+
+async def test_login_limiter_reservations(services: Services) -> None:
+    redis = services.redis()
+    prefix = f"{services.redis_prefix}limiter:"
+    limiter = LoginLimiter(redis, prefix=prefix)
+    user, ip = "someone", "10.0.0.1"
+    try:
+        for _ in range(5):
+            assert await limiter.acquire(user, ip) is None
+        # Five checks still running take up the username's limit.
+        assert await limiter.acquire(user, ip) == BUSY_RETRY_AFTER_S
+        # One ends with an error, not a wrong guess: its slot is free again.
+        assert await limiter.finish(user, ip, failed=False) == []
+        assert await limiter.acquire(user, ip) is None
+        # The five others fail: the fifth failure locks the username, once.
+        created = []
+        for _ in range(5):
+            created += [rule.name for rule in await limiter.finish(user, ip, failed=True)]
+        assert created == ["user"]
+        retry_after = await limiter.acquire(user, ip)
+        assert retry_after is not None
+        assert retry_after > BUSY_RETRY_AFTER_S
+        # Another username from the same IP is not affected (the IP has 5 of 20).
+        assert await limiter.acquire("someone_else", ip) is None
+    finally:
+        keys = [key async for key in redis.scan_iter(match=f"{prefix}*")]
+        if keys:
+            await redis.delete(*keys)
+        await redis.aclose()
 
 
 @pytest.mark.parametrize(

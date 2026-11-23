@@ -1,5 +1,7 @@
 """Section 6 / 12: login, lockout, session fixation."""
 
+import asyncio
+
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -112,9 +114,27 @@ async def test_username_is_locked_after_five_failures(
     lockouts = audit.find("auth.lockout")
     assert [e.details["rule"] for e in lockouts] == ["user"]
 
-    # The superadmin (here: the service, as the CLI does) can lift it early.
+    # The superadmin (here: the limiter, as the admin API does) can lift it early.
     await app.state.auth_service.limiter.unlock(username=admin.username)
     assert (await start_login(client, admin)).status_code == 200
+
+
+async def test_parallel_guesses_cannot_exceed_the_limit(
+    client: httpx.AsyncClient, settings: Settings, clock: FakeClock
+) -> None:
+    # The attempt is reserved before the password is checked, so requests sent
+    # at once cannot all pass the lock check first and then guess.
+    admin = await create_admin(settings, clock)
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                f"{AUTH}/login", json={"username": admin.username, "password": random_password()}
+            )
+            for _ in range(12)
+        )
+    )
+    assert sorted(r.status_code for r in responses) == [401] * 5 + [429] * 7
+    assert all(int(r.headers["retry-after"]) > 0 for r in responses if r.status_code == 429)
 
 
 async def test_unknown_username_is_locked_the_same_way(client: httpx.AsyncClient) -> None:

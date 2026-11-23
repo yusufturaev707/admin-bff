@@ -136,18 +136,34 @@ class AuthService:
             )
         )
 
-    async def _ensure_not_locked(self, username: str | None, meta: RequestMeta) -> None:
-        retry_after = await self.limiter.retry_after(username, meta.ip)
+    async def _begin_attempt(
+        self,
+        username: str | None,
+        meta: RequestMeta,
+        *,
+        action: str = "auth.login",
+        session: SessionData | None = None,
+    ) -> None:
+        """Reserves one credential check under the lockout rules (section 6);
+        while locked: 429, audited. Every reservation ends with `_end_attempt`."""
+        retry_after = await self.limiter.acquire(username, meta.ip)
         if retry_after is not None:
             await self._audit(
-                "auth.login", AuditOutcome.DENIED, meta, username=username, reason="locked"
+                action,
+                AuditOutcome.DENIED,
+                meta,
+                username=username,
+                session=session,
+                reason="locked",
             )
             raise AppError(
                 ErrorCode.RATE_LIMITED, LOCKED, headers={"Retry-After": str(retry_after)}
             )
 
-    async def _register_failure(self, username: str | None, meta: RequestMeta) -> None:
-        for rule in await self.limiter.record_failure(username, meta.ip):
+    async def _end_attempt(self, username: str | None, meta: RequestMeta, *, failed: bool) -> None:
+        """`failed=False` also after an unexpected error (e.g. the DB is down):
+        that is not a wrong guess, the reservation is only given back."""
+        for rule in await self.limiter.finish(username, meta.ip, failed=failed):
             await self._audit(
                 "auth.lockout",
                 AuditOutcome.DENIED,
@@ -183,19 +199,21 @@ class AuthService:
         self, username: str, password: str, meta: RequestMeta
     ) -> SessionStarted:
         normalized = normalize_username(username)
-        await self._ensure_not_locked(normalized, meta)
+        await self._begin_attempt(normalized, meta)
         failure: AuthFailedError | None = None
-        async with self._db() as db, db.begin():
-            try:
-                user = await self._providers[AuthMethod.PASSWORD].authenticate(
-                    db, PasswordCredentials(username, password)
-                )
-            except AuthFailedError as exc:
-                failure = exc
-            else:
-                user.last_login_at = self._clock()
+        try:
+            async with self._db() as db, db.begin():
+                try:
+                    user = await self._providers[AuthMethod.PASSWORD].authenticate(
+                        db, PasswordCredentials(username, password)
+                    )
+                except AuthFailedError as exc:
+                    failure = exc
+                else:
+                    user.last_login_at = self._clock()
+        finally:
+            await self._end_attempt(normalized, meta, failed=failure is not None)
         if failure is not None:
-            await self._register_failure(normalized, meta)
             await self._audit(
                 "auth.login",
                 AuditOutcome.DENIED,
@@ -249,29 +267,40 @@ class AuthService:
     async def change_password(
         self, session: SessionData, old_password: str, new_password: str, meta: RequestMeta
     ) -> None:
-        """Needs the current password. Ends every session of the admin."""
+        """Needs the current password. Ends every session of the admin.
+
+        The current password is a credential check like a login: it is refused
+        while the username or the IP is locked, and a wrong one counts as a
+        failure. Otherwise a stolen session could guess the password."""
+        await self._begin_attempt(
+            session.username, meta, action="auth.password.change", session=session
+        )
         wrong_password = False
-        async with self._db() as db, db.begin():
-            user = await self._load_user(db, session)
-            if user.password_hash is None:
-                raise AppError(ErrorCode.CONFLICT, "Bu hisob uchun parol o'rnatilmagan")
-            # The policy is checked first: it needs no secret.
-            try:
-                check_password_policy(new_password, username=user.username)
-            except PasswordPolicyError as exc:
-                raise field_error(("body", "new_password"), exc.reason, exc.message) from exc
-            if not await self.passwords.verify(user.password_hash, old_password):
-                wrong_password = True
-            elif await self.passwords.verify(user.password_hash, new_password):
-                raise field_error(
-                    ("body", "new_password"), "password_reused", "Yangi parol eskisidan farq qilsin"
-                )
-            else:
-                user.password_hash = await self.passwords.hash(new_password)
-                user.password_changed_at = self._clock()
-                user.must_change_password = False
+        try:
+            async with self._db() as db, db.begin():
+                user = await self._load_user(db, session)
+                if user.password_hash is None:
+                    raise AppError(ErrorCode.CONFLICT, "Bu hisob uchun parol o'rnatilmagan")
+                # The policy is checked first: it needs no secret.
+                try:
+                    check_password_policy(new_password, username=user.username)
+                except PasswordPolicyError as exc:
+                    raise field_error(("body", "new_password"), exc.reason, exc.message) from exc
+                if not await self.passwords.verify(user.password_hash, old_password):
+                    wrong_password = True
+                elif await self.passwords.verify(user.password_hash, new_password):
+                    raise field_error(
+                        ("body", "new_password"),
+                        "password_reused",
+                        "Yangi parol eskisidan farq qilsin",
+                    )
+                else:
+                    user.password_hash = await self.passwords.hash(new_password)
+                    user.password_changed_at = self._clock()
+                    user.must_change_password = False
+        finally:
+            await self._end_attempt(session.username, meta, failed=wrong_password)
         if wrong_password:
-            await self._register_failure(session.username, meta)
             await self._audit(
                 "auth.password.change",
                 AuditOutcome.DENIED,
@@ -325,19 +354,21 @@ class AuthService:
             )
             raise OneIdLoginError
         try:
-            await self._ensure_not_locked(None, meta)
+            await self._begin_attempt(None, meta)
         except AppError as exc:
             raise OneIdLoginError from exc
         failure: AuthFailedError | None = None
-        async with self._db() as db, db.begin():
-            try:
-                user = await self._oneid.authenticate(db, OneIdCredentials(code))
-            except AuthFailedError as exc:
-                failure = exc
-            else:
-                user.last_login_at = self._clock()
+        try:
+            async with self._db() as db, db.begin():
+                try:
+                    user = await self._oneid.authenticate(db, OneIdCredentials(code))
+                except AuthFailedError as exc:
+                    failure = exc
+                else:
+                    user.last_login_at = self._clock()
+        finally:
+            await self._end_attempt(None, meta, failed=failure is not None)
         if failure is not None:
-            await self._register_failure(None, meta)
             await self._audit(
                 "auth.login",
                 AuditOutcome.DENIED,

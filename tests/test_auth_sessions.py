@@ -3,10 +3,11 @@
 import httpx
 from fastapi import FastAPI
 
+from app.audit.sink import AuditOutcome
 from app.auth.dependencies import SESSION_COOKIE
 from app.settings import Settings
 from tests.auth_helpers import AUTH, create_admin, login, random_password, start_login
-from tests.conftest import FakeClock
+from tests.conftest import AuditRecorder, FakeClock
 from tests.helpers import extra_client
 
 
@@ -140,3 +141,35 @@ async def test_password_change_checks(
     reused = await change(admin.password, admin.password)
     assert reused.status_code == 422
     assert error(reused) == (["body", "new_password"], "password_reused")
+
+
+async def test_password_change_is_locked_like_a_login(
+    client: httpx.AsyncClient, settings: Settings, clock: FakeClock, audit: AuditRecorder
+) -> None:
+    # A stolen session must not be a way to guess the current password.
+    admin = await create_admin(settings, clock)
+    token = await login(client, admin, clock)
+
+    async def change(old: str) -> httpx.Response:
+        return await client.post(
+            f"{AUTH}/password",
+            headers=csrf(token),
+            json={"old_password": old, "new_password": random_password()},
+        )
+
+    for _ in range(5):
+        assert (await change(random_password())).status_code == 422
+    assert [e.details["rule"] for e in audit.find("auth.lockout")] == ["user"]
+
+    # Even the right password is refused while the lock lasts.
+    locked = await change(admin.password)
+    assert locked.status_code == 429
+    assert locked.json()["error"]["code"] == "rate_limited"
+    assert 0 < int(locked.headers["retry-after"]) <= 15 * 60
+    denied = audit.find("auth.password.change", AuditOutcome.DENIED)[-1]
+    assert denied.details["reason"] == "locked"
+    assert denied.actor_username == admin.username
+    # The same lock covers the login, and nothing was changed.
+    assert (await start_login(client, admin)).status_code == 429
+    assert not audit.find("auth.password.change", AuditOutcome.SUCCESS)
+    assert (await client.get(f"{AUTH}/session")).status_code == 200
