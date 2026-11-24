@@ -21,7 +21,7 @@ import app.audit.models
 import app.auth.models
 import app.rbac.models  # noqa: F401  (all register their tables on Base.metadata)
 from app.audit.models import include_name
-from app.core.db import Base, owner_database_url, ssl_connect_args
+from app.core.db import Base, driver_connect_args, owner_database_url
 from app.core.db_privileges import grant_app_privileges
 from app.settings import load_settings
 
@@ -33,7 +33,7 @@ target_metadata = Base.metadata
 
 
 def _target() -> tuple[URL, str | None, dict[str, Any]]:
-    """The URL, the application role and asyncpg connect_args (TLS)."""
+    """The URL, the application role and asyncpg connect_args (TLS, PgBouncer)."""
     # Tests pass the URL of their temporary database (and optionally the
     # application role) programmatically.
     url = config.attributes.get("database_url")
@@ -43,7 +43,7 @@ def _target() -> tuple[URL, str | None, dict[str, Any]]:
     settings = load_settings()
     owner = settings.db_owner_user
     app_role = settings.db_user if owner is not None and owner != settings.db_user else None
-    return owner_database_url(settings), app_role, ssl_connect_args(settings)
+    return owner_database_url(settings), app_role, driver_connect_args(settings)
 
 
 def run_migrations_offline() -> None:

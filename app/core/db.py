@@ -9,6 +9,7 @@ from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, ClassVar
+from uuid import uuid4
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -91,6 +92,28 @@ def ssl_connect_args(settings: Settings) -> dict[str, Any]:
     return {"ssl": db_ssl_context(settings)}
 
 
+def _prepared_statement_name() -> str:
+    return f"__asyncpg_{uuid4().hex}__"
+
+
+def driver_connect_args(settings: Settings) -> dict[str, Any]:
+    """asyncpg `connect_args` shared by the app and the migrations: TLS
+    (`ssl_connect_args`) and PgBouncer.
+
+    PgBouncer in transaction or statement pool mode gives each transaction
+    any server connection. asyncpg's numbered statement names
+    (`__asyncpg_stmt_1__`) then collide with those another client left on it:
+    "prepared statement ... already exists". Unique names and no statement
+    caches work through PgBouncer and directly alike; re-preparing every
+    statement costs the admin panel nothing noticeable."""
+    return {
+        **ssl_connect_args(settings),
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+        "prepared_statement_name_func": _prepared_statement_name,
+    }
+
+
 def create_engine(settings: Settings) -> AsyncEngine:
     return create_async_engine(
         database_url(settings),
@@ -101,8 +124,9 @@ def create_engine(settings: Settings) -> AsyncEngine:
         connect_args={
             "timeout": 5,
             # Every session works in UTC regardless of the server's timezone.
+            # PgBouncer passes both parameters on to the server connection.
             "server_settings": {"application_name": "admin-bff", "timezone": "UTC"},
-            **ssl_connect_args(settings),
+            **driver_connect_args(settings),
         },
     )
 
@@ -130,12 +154,16 @@ async def database_revision(engine: AsyncEngine) -> str | None:
 
 
 async def connection_is_encrypted(engine: AsyncEngine) -> bool:
-    """Whether this connection to PostgreSQL uses TLS ("prefer" may fall back)."""
+    """Whether the BFF's own link to the database server uses TLS ("prefer"
+    may fall back to plain text).
+
+    Read from the client side: behind PgBouncer, `pg_stat_ssl` would describe
+    PgBouncer's link to PostgreSQL instead."""
     async with engine.connect() as conn:
-        encrypted = await conn.scalar(
-            text("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()")
-        )
-    return encrypted is True
+        raw = await conn.get_raw_connection()
+        # asyncpg keeps the (TLS-upgraded) asyncio transport here.
+        transport = getattr(raw.driver_connection, "_transport", None)
+    return transport is not None and transport.get_extra_info("ssl_object") is not None
 
 
 async def ping_database(engine: AsyncEngine) -> None:

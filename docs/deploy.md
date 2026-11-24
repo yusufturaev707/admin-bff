@@ -209,7 +209,8 @@ shell tarixiga tushmaydi:
 ```
 
 Jadvallarni 8-qadamdagi migratsiyalar yaratadi. DB serverida TLS yoqilgan
-bo'lsa, ulanish o'zi shifrlanadi. Migratsiyalar va servis bitta user bilan
+bo'lsa, ulanish o'zi shifrlanadi. Port PostgreSQL'niki ham, uning oldidagi
+PgBouncer'niki (transaction rejimi ham) bo'lishi mumkin. Migratsiyalar va servis bitta user bilan
 ishlaydi (egasining qarori, 2026-11-24; `docs/security.md`).
 
 ## 6. Redis 7.4 (BFF'ning o'z instansi)
