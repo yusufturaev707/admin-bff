@@ -442,9 +442,11 @@ keyin o'chiriladi.
 ## API hujjatlari frontendchi uchun (domensiz)
 
 Domen va frontend hali yo'q bo'lsa, frontendchi API hujjatlarini server IP'si
-va porti orqali ko'radi: `http://<server_IP>:8090/`. Bu faqat o'qish uchun
-Swagger UI: nginx repo'dagi sxemani (`openapi/v1.json`) ko'rsatadi, BFF'ga
-so'rov ketmaydi. Sxema `admin-bff update` bilan o'zi yangilanadi.
+va porti orqali ko'radi: `http://<server_IP>:8090/api/v1/docs`. Bu faqat
+o'qish uchun Swagger UI: nginx repo'dagi sxemani (`openapi/v1.json`)
+ko'rsatadi, BFF'ga so'rov ketmaydi. Sxema `admin-bff update` bilan o'zi
+yangilanadi. Yo'llar API'ning o'zidagidek (`/api/v1/docs`,
+`/api/v1/openapi.json`): domen ulanganda frontendchi faqat host'ni almashtiradi.
 
 ```bash
 ss -ltn | grep -E ':8090\b'                      # bo'sh chiqishi kerak
@@ -456,16 +458,16 @@ cp /srv/admin-bff/deploy/nginx/admin-bff-docs.conf /etc/nginx/sites-available/
 ln -s /etc/nginx/sites-available/admin-bff-docs.conf /etc/nginx/sites-enabled/zz-admin-bff-docs.conf
 nginx -t && systemctl reload nginx
 
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/v1.json   # 403: 127.0.0.1 allowlist'da yo'q
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/api/v1/openapi.json   # 403: 127.0.0.1 allowlist'da yo'q
 ufw status | head -1                             # "Status: active" bo'lsa, pastda
 ```
 
 - **UFW yoqilgan bo'lsa**, port faqat frontendchiga ochiladi:
   `ufw allow from <frontendchi_IP> to any port 8090 proto tcp`.
-- **Frontendchiga beriladi:** sahifa `http://<server_IP>:8090/`, sxemaning
-  o'zi `http://<server_IP>:8090/v1.json`. Tiplangan client shu manzildan
-  yasaladi, masalan
-  `npx openapi-typescript http://<server_IP>:8090/v1.json -o src/api/schema.d.ts`.
+- **Frontendchiga beriladi:** sahifa `http://<server_IP>:8090/api/v1/docs`,
+  sxemaning o'zi `http://<server_IP>:8090/api/v1/openapi.json`. Tiplangan
+  client shu manzildan yasaladi, masalan
+  `npx openapi-typescript http://<server_IP>:8090/api/v1/openapi.json -o src/api/schema.d.ts`.
 - **Sahifadan so'rov yuborib bo'lmaydi ("Try it out" yo'q).** Login cookie'si
   faqat HTTPS orqali ishlaydi, shuning uchun API'ni sinash uchun domen va
   sertifikat (10-qadam) yoki alohida test muhiti kerak.
