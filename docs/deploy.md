@@ -37,7 +37,7 @@ Ikkala server ham umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
   ko'rsatadi. `apt upgrade` deploy'ning qismi emas.
 - **Og'ir ishlar serverdagi boshqa loyihalar kam yuklangan vaqtda qilinadi.**
   Bu Python va Redis'ni yig'ish (1- va 6-qadamlar). Ular `nice -n 19` bilan va
-  yadrolarning yarmida ishlaydi.
+  yadrolarning yarmida (ko'pi bilan 16 tasida) ishlaydi.
 - **UFW o'zgartirilmaydi.** BFF yangi port ochmaydi: tashqaridan unga faqat
   Nginx'ning 443-porti orqali kiriladi. Boshqa loyihalarning portlarini
   bilmasdan UFW'ni yoqish yoki o'zgartirish ularni ishdan chiqarishi mumkin.
@@ -63,10 +63,11 @@ BFF serverida tekshirib oling. Bu buyruqlar hech narsani o'zgartirmaydi:
 ```bash
 lsb_release -ds; systemctl --version | head -1; openssl version
 nproc; free -h; df -h /srv /opt /usr/local
-ss -ltnp | grep -E ':(80|443|8081)\b'          # 80 va 443 kimda; 8081 bo'sh bo'lishi kerak
+ss -ltnp | grep -E ':(80|443|18081)\b' | cut -c1-120   # 80 va 443 kimda; 18081 bo'sh bo'lishi kerak
 nginx -v                                         # nginx bormi va versiyasi
 grep -n "include" /etc/nginx/nginx.conf          # sites-enabled/* ulanganmi
 grep -rn "listen" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/
+grep -rn "default_server" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/
 ```
 
 Natijaga qarab:
@@ -83,9 +84,24 @@ Natijaga qarab:
   rm /etc/nginx/sites-enabled/default && nginx -t && systemctl reload nginx
   ```
 
-- **nginx versiyasi.** Ubuntu 22.04'niki 1.18, unda HTTP/2 yoqilmaydi
-  (`deploy/nginx/admin-api.conf` boshidagi izoh). nginx.org repo'sidan 1.25.1
-  yoki yangisi o'rnatilgan bo'lsa, HTTP/2 `http2 on;` bilan yoqiladi.
+- **HTTP/2.** Ubuntu 22.04'ning nginx'i 1.18, unda `listen ... http2` butun
+  ip:port uchun ishlaydi. BFF config'larida `listen 443 ssl http2;` turibdi,
+  chunki serverda `api-iiv.uzbmb.uz` uni `0.0.0.0:443`da allaqachon yoqqan.
+  `grep`da 443-portli hech bir qatorda `http2` bo'lmasa,
+  `admin-api.conf` va `admin-frontend.conf`dagi `http2` olib tashlanadi: aks
+  holda u boshqa saytlarda ham HTTP/2'ni yoqadi. nginx 1.25.1 yoki yangisida
+  `listen`dagi `http2` o'rniga `http2 on;` yoziladi.
+- **IPv6.** BFF config'larida `listen [::]` yo'q, chunki boshqa saytlar faqat
+  IPv4'da tinglaydi. Ular IPv6'da ham tinglasa (`grep`da `[::]`), BFF'ga ham
+  xuddi shunday qatorlar qo'shiladi.
+- **Default server.** `default_server` hech qayerda yo'q bo'lsa, har bir
+  ip:port'da `sites-enabled`dagi alifbo bo'yicha birinchi sayt default server
+  bo'ladi: IP orqali yoki noma'lum domen bilan kelgan so'rovlar unga tushadi.
+  BFF fayllari `sites-enabled`ga `zz-` bilan boshlanadigan nom bilan ulanadi
+  (10-qadam), shunda default server o'zgarmaydi.
+- **18081-port.** `admin-bff-internal.conf` (JWKS va `/metrics`, faqat
+  `127.0.0.1`) shu portda tinglaydi. Band bo'lsa, boshqa bo'sh port tanlanadi
+  va 11-qadamdagi `curl`da ham almashtiriladi.
 - **Aniq IP bilan `listen`.** Boshqa loyiha `listen 10.x.x.x:443 ssl;` kabi
   aniq IP bilan tinglasa, BFF'ning server bloklarida ham `listen` xuddi shu
   ko'rinishda bo'lishi kerak. Aks holda nginx shu IP'ga kelgan so'rovlarni o'sha
@@ -113,7 +129,7 @@ gpg --verify Python-3.12.16.tar.xz.asc Python-3.12.16.tar.xz   # "Good signature
 
 tar xf Python-3.12.16.tar.xz && cd Python-3.12.16
 ./configure --enable-optimizations --with-lto
-J=$(( ($(nproc) + 1) / 2 ))  # yadrolarning yarmi
+J=$(( $(nproc) > 32 ? 16 : ($(nproc) + 1) / 2 ))   # yadrolarning yarmi, ko'pi bilan 16
 nice -n 19 make -j"$J"       # 20–60 daqiqa
 make altinstall              # "make install" EMAS
 
@@ -383,7 +399,7 @@ curl -fsSL https://raw.githubusercontent.com/redis/redis-hashes/master/README -o
 grep " redis-$V.tar.gz " redis-hashes.txt | awk '{print $4 "  " $2}' | sha256sum -c   # redis-7.4.12.tar.gz: OK
 
 tar xzf redis-$V.tar.gz && cd redis-$V
-J=$(( ($(nproc) + 1) / 2 ))
+J=$(( $(nproc) > 32 ? 16 : ($(nproc) + 1) / 2 ))
 nice -n 19 make -j"$J" USE_SYSTEMD=yes
 make install PREFIX=/opt/admin-bff-redis USE_SYSTEMD=yes
 /opt/admin-bff-redis/bin/redis-server --version   # Redis server v=7.4.12 ...
@@ -472,7 +488,18 @@ Parol ikki marta so'raladi. Superadmin birinchi kirishda parolini almashtiradi.
 Boshqa loyihalarning saytlari o'zgarmaydi, BFF uchun yangi server bloklari
 qo'shiladi.
 
+nginx `sites-enabled`dagi fayllarni alifbo tartibida o'qiydi. `default_server`
+yozilmagan bo'lsa, ip:port'dagi birinchi server bloki default server bo'ladi:
+IP orqali yoki noma'lum domen bilan kelgan so'rovlar unga tushadi. `admin-api`
+alifboda boshqa saytlardan (`api-iiv...`, `exam...`) oldin keladi, shuning uchun
+`sites-enabled`dagi nomlar `zz-` bilan boshlanadi. Shunda BFF bloklari oxirida
+o'qiladi va boshqa loyihalarning default server'i o'zgarmaydi.
+
 ```bash
+# Hozirgi holat: IP orqali kelgan so'rovga qaysi sayt javob beradi.
+curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
+curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
+
 cp /srv/admin-bff/deploy/nginx/admin-allowlist.conf /etc/nginx/snippets/
 nano /etc/nginx/snippets/admin-allowlist.conf    # allow <diapazon>; ... deny all;
 
@@ -482,22 +509,30 @@ install -d -m 0750 /etc/nginx/tls/admin-api.uzbmb.uz
 cp /srv/admin-bff/deploy/nginx/admin-api.conf /srv/admin-bff/deploy/nginx/admin-bff-internal.conf \
   /etc/nginx/sites-available/
 # Domen boshqa bo'lsa: admin-api.conf'da server_name va sertifikat yo'llari.
-ln -s /etc/nginx/sites-available/admin-api.conf /etc/nginx/sites-enabled/
-ln -s /etc/nginx/sites-available/admin-bff-internal.conf /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/admin-api.conf /etc/nginx/sites-enabled/zz-admin-api.conf
+ln -s /etc/nginx/sites-available/admin-bff-internal.conf /etc/nginx/sites-enabled/zz-admin-bff-internal.conf
 
 nginx -t && systemctl reload nginx
+
+# Natija avvalgidek bo'lishi kerak:
+curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
+curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
 ```
+
+Natija o'zgargan bo'lsa (masalan, `403` chiqsa), BFF default server bo'lib
+qolgan. Unda BFF bloklari darhol o'chiriladi va sababi aniqlanadi:
+`rm /etc/nginx/sites-enabled/zz-admin-*.conf && nginx -t && systemctl reload nginx`.
 
 `nginx -t` xato bersa, `reload` qilinmaydi va boshqa saytlar eski config bilan
 ishlashda davom etadi. Xatoni tuzatib, qaytadan `nginx -t` qilinadi.
 
 Frontend build'i tayyor bo'lganda `admin-frontend.conf` xuddi shu tarzda
-qo'shiladi. Build `/var/www/admin-frontend`ga joylanadi.
+(`zz-admin-frontend.conf` nomi bilan) qo'shiladi. Build `/var/www/admin-frontend`ga joylanadi.
 
 ## 11. Tekshirish
 
 ```bash
-curl -s http://127.0.0.1:8081/metrics | head    # metrikalar (faqat server ichidan)
+curl -s http://127.0.0.1:18081/metrics | head   # metrikalar (faqat server ichidan)
 journalctl -u admin-bff -f                       # loglar (JSON)
 ```
 
