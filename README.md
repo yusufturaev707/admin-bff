@@ -29,9 +29,10 @@ Serverga o'rnatish tartibi: [`docs/deploy.md`](docs/deploy.md). Qisqacha:
 - Redis 7.4: Ubuntu'niki 6.0, mos kelmaydi. BFF'ning Redis'i manbadan
   yig'iladi (`/opt/admin-bff-redis`) va alohida instans sifatida ishlaydi
   (`deploy/admin-bff-redis.service`). Serverdagi boshqa Redis'larga tegilmaydi.
-- nginx 1.18 (Ubuntu'niki): HTTP/2 `listen 443 ssl http2;` bilan, u serverda
-  `0.0.0.0:443`da allaqachon yoqilgan. IPv6 yo'q, ichki blok `127.0.0.1:18081`da
-  (`deploy/nginx/admin-api.conf` boshidagi izoh).
+- nginx 1.18 (Ubuntu'niki). TLS tashkilotning tashqi proxy'sida:
+  `https://kpi.uzbmb.uz` -> proxy -> shu serverning 8080-porti, oddiy HTTP.
+  Mijozning IP'si `X-Forwarded-For`dan faqat proxy'dan kelganda olinadi. IPv6
+  yo'q, ichki blok `127.0.0.1:18081`da (`deploy/nginx/admin-api.conf` boshidagi izoh).
 
 **Python 3.12 serverga alohida o'rnatiladi:** Ubuntu 22.04'ning o'z Python'i
 3.10, unga tizim va boshqa loyihalar bog'langan va u o'zgartirilmaydi.
@@ -181,7 +182,7 @@ Fayllar `deploy/` papkasida:
 | `gunicorn.conf.py` | Gunicorn + `uvicorn_worker.UvicornWorker`, `/run/admin-bff/bff.sock`, Prometheus multiprocess fayllari |
 | `admin-bff.env.example` | `/etc/admin-bff/admin-bff.env` namunasi |
 | `admin-bff-redis.service`, `admin-bff-redis.conf` | BFF'ning alohida sessiya Redis'i: manbadan yig'ilgan 7.4, `/opt/admin-bff-redis` (faqat unix socket, `requirepass`) |
-| `nginx/admin-api.conf` | BFF'ning yagona nginx fayli: API `https://kpi.uzbmb.uz` (TLS, HSTS, rate limit, SSE, `/internal/` yopiq), ichki `127.0.0.1:18081` (JWKS, `/metrics`), faqat o'qish uchun hujjatlar `http://<server_IP>:8090/api/v1/docs` |
+| `nginx/admin-api.conf` | BFF'ning yagona nginx fayli: API `https://kpi.uzbmb.uz` tashqi proxy orqali, 8080 (real IP, HSTS, rate limit, SSE, `/internal/` yopiq), ichki `127.0.0.1:18081` (JWKS, `/metrics`), faqat o'qish uchun hujjatlar `http://<server_IP>:8090/api/v1/docs` |
 | `nginx/admin-frontend.conf` | frontend server bloki, faqat o'z domeni |
 | `nginx/admin-allowlist.conf` | IP allowlist (sukut bo'yicha hammasi yopiq) |
 | `admin-bff.sh` | serverdagi qisqa buyruq `admin-bff`: `update`, `migrate`, `superadmin <login>`, `status` |

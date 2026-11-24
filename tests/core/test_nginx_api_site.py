@@ -1,6 +1,7 @@
-"""The API and frontend sites (deploy/nginx/) answer only to their domain:
-installing them means writing the domain into `server_name` and putting the
-certificate into a path that does not name the domain."""
+"""The BFF's nginx sites (deploy/nginx/) behind the organisation's TLS proxy:
+the proxy terminates HTTPS for *.uzbmb.uz and sends plain HTTP to port 8080
+of this server, like the other *.uzbmb.uz sites there (seen in the server's
+access log, 2026-11-24)."""
 
 import re
 from pathlib import Path
@@ -8,56 +9,64 @@ from pathlib import Path
 import pytest
 
 NGINX = Path(__file__).resolve().parents[2] / "deploy" / "nginx"
-SITES = {
-    "admin-api.conf": ("kpi.uzbmb.uz", "/etc/nginx/tls/admin-api"),
-    "admin-frontend.conf": ("admin.uzbmb.uz", "/etc/nginx/tls/admin-frontend"),
-}
+API, FRONTEND = "admin-api.conf", "admin-frontend.conf"
 # admin-api.conf holds all of the BFF: the API, then the internal block on
 # loopback and the read-only docs on their own port. `_` only appears on ports
 # no other site uses.
-LISTENS = {
-    "admin-api.conf": ["80", "443 ssl http2", "127.0.0.1:18081", "8090"],
-    "admin-frontend.conf": ["80", "443 ssl http2"],
-}
-EXTRA_NAMES = {"admin-api.conf": ["_", "_"], "admin-frontend.conf": []}
+LISTENS = {API: ["8080", "127.0.0.1:18081", "8090"], FRONTEND: ["8080"]}
+NAMES = {API: ["kpi.uzbmb.uz", "_", "_"], FRONTEND: ["admin.uzbmb.uz"]}
 
 
 def _conf(name: str) -> str:
     return (NGINX / name).read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("name", SITES)
-def test_the_site_answers_only_to_its_domain(name: str) -> None:
+def _directives(conf: str, name: str) -> list[str]:
+    """Values of a directive, comments excluded."""
+    return re.findall(rf"^\s*{name} ([^;]+);", conf, re.MULTILINE)
+
+
+@pytest.mark.parametrize("name", [API, FRONTEND])
+def test_the_site_answers_only_to_its_names_and_ports(name: str) -> None:
     conf = _conf(name)
-    domain, _ = SITES[name]
-    # Directives only, not the comments that mention them.
-    names = re.findall(r"^\s+server_name ([^;]+);", conf, re.MULTILINE)
-    assert names == [domain, domain, *EXTRA_NAMES[name]]
-    listens = re.findall(r"^\s+listen ([^;]+);", conf, re.MULTILINE)
     # Another project's IP-based or unknown-name traffic must never land here:
-    # no default_server, and on 80/443 only the domain.
-    assert listens == LISTENS[name]
+    # no default_server, and on the shared 8080 only the domain.
+    assert _directives(conf, "listen") == LISTENS[name]
+    assert _directives(conf, "server_name") == NAMES[name]
 
 
-@pytest.mark.parametrize("name", SITES)
-def test_the_certificate_path_does_not_name_the_domain(name: str) -> None:
+@pytest.mark.parametrize("name", [API, FRONTEND])
+def test_no_tls_and_no_redirect_behind_the_proxy(name: str) -> None:
+    # The proxy sends plain HTTP: a redirect to https here loops forever.
     conf = _conf(name)
-    _, tls = SITES[name]
-    assert f"ssl_certificate     {tls}/fullchain.pem;" in conf
-    assert f"ssl_certificate_key {tls}/privkey.pem;" in conf
+    assert not _directives(conf, "ssl_certificate")
+    assert "return 301" not in conf
 
 
-@pytest.mark.parametrize("name", SITES)
-def test_port_80_only_redirects_and_hides_the_version(name: str) -> None:
-    plain = _conf(name).split("listen 80;", 1)[1].split("}", 1)[0]
-    assert "return 301 https://$host$request_uri;" in plain
-    assert "server_tokens off;" in plain
-    # `return` runs before allow/deny: an allowlist here would only look active.
-    assert "admin-allowlist" not in plain
+@pytest.mark.parametrize("name", [API, FRONTEND])
+def test_the_client_ip_is_trusted_only_from_the_proxy(name: str) -> None:
+    conf = _conf(name)
+    proxy = re.search(r"^\s+(\S+) 1;\s+# PROXY", _conf(API), re.MULTILINE)
+    assert proxy is not None
+    # Inside the server block only: at http level it would change every
+    # other site on the server.
+    assert re.findall(r"^    set_real_ip_from (\S+);", conf, re.MULTILINE) == [proxy.group(1)]
+    assert not re.search(r"^set_real_ip_from", conf, re.MULTILINE)
+    assert _directives(conf, "real_ip_header") == ["X-Forwarded-For"]
+    assert _directives(conf, "real_ip_recursive") == ["on"]
+    # Plain HTTP straight to <server_IP>:8080, past the proxy, is refused.
+    assert re.search(r"if \(\$admin_bff_via_proxy = 0\) \{\s+return 403;", conf)
+
+
+def test_the_api_tells_the_bff_the_real_client_and_scheme() -> None:
+    conf = _conf(API)
+    assert "proxy_set_header X-Forwarded-For $remote_addr;" in conf
+    assert "proxy_set_header X-Forwarded-Proto https;" in conf
+    assert re.search(r"geo \$realip_remote_addr \$admin_bff_via_proxy \{", conf)
 
 
 def test_the_api_keeps_internal_paths_closed_with_json_errors() -> None:
-    conf = _conf("admin-api.conf")
+    conf = _conf(API)
     assert "location /internal/ { return 404; }" in conf
     assert "location = /metrics { return 404; }" in conf
     assert "include /etc/nginx/snippets/admin-allowlist.conf;" in conf
@@ -68,14 +77,13 @@ def test_the_api_keeps_internal_paths_closed_with_json_errors() -> None:
 
 
 def test_the_frontend_may_reach_the_api_domain() -> None:
-    api_domain = SITES["admin-api.conf"][0]
-    csp = re.search(r'Content-Security-Policy "([^"]+)"', _conf("admin-frontend.conf"))
+    csp = re.search(r'Content-Security-Policy "([^"]+)"', _conf(FRONTEND))
     assert csp is not None
-    assert f"connect-src 'self' https://{api_domain};" in csp.group(1)
+    assert f"connect-src 'self' https://{NAMES[API][0]};" in csp.group(1)
 
 
 def test_the_internal_block_listens_on_loopback_only() -> None:
-    conf = _conf("admin-api.conf")
+    conf = _conf(API)
     internal = conf.split("listen 127.0.0.1:18081;", 1)[1].split("\n}\n", 1)[0]
     assert "location = /internal/jwks.json {" in internal
     assert "location = /metrics {" in internal

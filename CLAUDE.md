@@ -576,7 +576,7 @@ Bitta tizim ishlamay qolsa ham adminka ishlashda davom etadi. Tashqariga faqat N
   - sessiya Redis'ida `requirepass`, voqealar Redis'ida ACL (10.1-bo'lim, `deploy/redis-events.conf`).
 - **UFW.** Tashqariga faqat 80, 443 va SSH ochiq, SSH faqat ma'lum IP'lardan. Tizimlarning ichki API portlari tashqariga ochilmaydi.
 - **Nginx** (frontend va API uchun alohida server bloklari):
-  - TLS 1.2/1.3, HSTS, `client_max_body_size 1m`;
+  - TLS 1.2/1.3, HSTS, `client_max_body_size 1m`. **Serverda (2026-11-24): TLS tashkilotning tashqi proxy'sida (`kpi.uzbmb.uz` -> 195.158.9.234 -> 192.168.200.234 -> BFF serverining 8080-porti, HTTP). BFF nginx'ida TLS va redirect yo'q; mijoz IP'si `set_real_ip_from` bilan faqat proxy'dan, proxy'siz kirish 403 (`deploy/nginx/admin-api.conf`).**
   - `/api/v1/auth/` uchun rate limit;
   - IP allowlist: faqat bino ichki tarmog'i diapazonlari (`allow <diapazon>; deny all;`, diapazonlarni egasi beradi);
   - security header'lar: `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`;

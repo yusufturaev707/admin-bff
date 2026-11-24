@@ -35,8 +35,8 @@ BFF serveri umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
 - **Og'ir ishlar serverdagi boshqa loyihalar kam yuklangan vaqtda qilinadi.**
   Bu Python va Redis'ni yig'ish (1- va 6-qadamlar). Ular `nice -n 19` bilan va
   yadrolarning yarmida (ko'pi bilan 16 tasida) ishlaydi.
-- **UFW o'zgartirilmaydi.** BFF yangi port ochmaydi: tashqaridan unga faqat
-  Nginx'ning 443-porti orqali kiriladi. Boshqa loyihalarning portlarini
+- **UFW o'zgartirilmaydi.** BFF yangi port ochmaydi: unga tashkilotning
+  tashqi proxy'si orqali, nginx'ning 8080-portidan kiriladi (10-qadam). Boshqa loyihalarning portlarini
   bilmasdan UFW'ni yoqish yoki o'zgartirish ularni ishdan chiqarishi mumkin.
 - **Hamma buyruqlar root sifatida, `sudo -i` bilan bajariladi.**
 
@@ -44,7 +44,8 @@ BFF serveri umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
 
 - Domenlar. API: `kpi.uzbmb.uz`. Frontend domeni hali yo'q, u ham
   `*.uzbmb.uz` ostida bo'ladi (10-bo'lim).
-- TLS sertifikati: serverdagi `*.uzbmb.uz` wildcard sertifikati.
+- TLS: tashkilotning tashqi proxy'sida (`*.uzbmb.uz`), bu serverda emas
+  (10-qadam).
 - IP allowlist: adminlar kompyuterlarining IP diapazonlari. Ro'yxat bo'sh
   bo'lsa, Nginx hammani rad etadi.
 - `kpi.uzbmb.uz` server IP'siga ochilishi: ichki DNS yoki adminlar
@@ -78,13 +79,8 @@ Natijaga qarab:
   rm /etc/nginx/sites-enabled/default && nginx -t && systemctl reload nginx
   ```
 
-- **HTTP/2.** Ubuntu 22.04'ning nginx'i 1.18, unda `listen ... http2` butun
-  ip:port uchun ishlaydi. BFF config'larida `listen 443 ssl http2;` turibdi,
-  chunki serverda `api-iiv.uzbmb.uz` uni `0.0.0.0:443`da allaqachon yoqqan.
-  `grep`da 443-portli hech bir qatorda `http2` bo'lmasa,
-  `admin-api.conf` va `admin-frontend.conf`dagi `http2` olib tashlanadi: aks
-  holda u boshqa saytlarda ham HTTP/2'ni yoqadi. nginx 1.25.1 yoki yangisida
-  `listen`dagi `http2` o'rniga `http2 on;` yoziladi.
+- **HTTP/2.** BFF sayti 8080'da oddiy HTTP/1.1 bilan ishlaydi. Brauzer bilan
+  HTTP/2 tashqi proxy'ning ishi.
 - **IPv6.** BFF config'larida `listen [::]` yo'q, chunki boshqa saytlar faqat
   IPv4'da tinglaydi. Ular IPv6'da ham tinglasa (`grep`da `[::]`), BFF'ga ham
   xuddi shunday qatorlar qo'shiladi.
@@ -338,133 +334,119 @@ Parol ikki marta so'raladi. Superadmin birinchi kirishda parolini almashtiradi.
 
 ## 10. Nginx
 
-Boshqa loyihalarning saytlari o'zgarmaydi. BFF uchun yangi saytlar
-qo'shiladi va ular faqat o'z domeni bilan kelgan so'rovlarga javob beradi:
+Boshqa loyihalarning saytlari o'zgarmaydi. BFF'ning hamma nginx sozlamasi
+bitta faylda: `deploy/nginx/admin-api.conf`. Unda API, ichki JWKS va
+`/metrics` hamda 8090'dagi hujjatlar bor.
 
-- **API:** `https://kpi.uzbmb.uz` (`admin-api.conf`). Hozir ulanadi.
-- **Frontend** (`admin-frontend.conf`): domeni hali yo'q, domen va build
-  tayyor bo'lganda ulanadi (pastda).
+**So'rov yo'li** (server log'idan, 2026-11-24):
 
-Sertifikat serverdagi `*.uzbmb.uz` wildcard sertifikati. Frontend domeni ham
-`*.uzbmb.uz` ostida bo'ladi: sessiya cookie'si `SameSite=Strict`, frontend va
-API bitta asosiy domen ostida bo'lishi shart.
+```
+brauzer -> https://kpi.uzbmb.uz -> 195.158.9.234 (tashkilotning tashqi proxy'si: TLS, *.uzbmb.uz)
+        -> 192.168.200.234 -> shu server, 8080-port, oddiy HTTP -> nginx -> BFF
+```
+
+Serverdagi boshqa `*.uzbmb.uz` saytlari ham shunday ishlaydi. Shuning uchun:
+
+- **Bu serverda TLS ham, sertifikat ham yo'q.** HTTP'dan HTTPS'ga redirect
+  ham yo'q: proxy yana HTTP bilan yuboradi va redirect cheksiz aylanma beradi.
+  Chrome buni "This page isn't working" deb ko'rsatadi.
+- **Mijozning haqiqiy IP'si** proxy yuboradigan `X-Forwarded-For`dan olinadi,
+  faqat so'rov proxy'ning o'zidan kelganda (`set_real_ip_from`). Aks holda
+  allowlist ham, BFF'dagi IP bo'yicha login bloklash ham proxy'ni ko'radi:
+  bitta odamning xatolari hamma adminlarni bloklardi.
+- **Proxy'ni chetlab kirib bo'lmaydi.** `http://<server_IP>:8080` orqali
+  to'g'ridan-to'g'ri kelgan so'rov `403` oladi. Istisno faqat serverning o'zi,
+  `127.0.0.1` (tekshiruvlar uchun).
+- Proxy'ning IP'si o'zgarsa, `admin-api.conf`da `# PROXY` bilan belgilangan
+  ikkala qator almashtiriladi.
 
 **1. Tekshiruvlar** (hech narsani o'zgartirmaydi):
 
 ```bash
-grep -rln "kpi.uzbmb.uz" /etc/nginx/ 2>/dev/null   # bo'sh bo'lishi kerak: bu nom boshqa saytda yo'q
-getent hosts kpi.uzbmb.uz                          # DNS bo'lsa, server IP'si chiqadi
-grep -rh -e "ssl_certificate " -e "ssl_certificate_key" /etc/nginx/sites-enabled/ | sort -u
+grep -rln "kpi.uzbmb.uz" /etc/nginx/ 2>/dev/null     # faqat BFF'ning fayli bo'lishi mumkin
+grep -rn "default_server" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/
 ```
 
-- Birinchi buyruq biror fayl ko'rsatsa, `kpi.uzbmb.uz` boshqa saytda
-  ishlatilyapti. nginx ikkinchisini e'tiborsiz qoldiradi, davom etishdan
-  oldin xabar bering.
-- `getent` hech narsa chiqarmasa, DNS'da yozuv yo'q: adminlar kompyuterlariga
-  `hosts` qatori yoziladi (`<server_IP> kpi.uzbmb.uz`). Server tomonidagi
-  tekshiruv baribir ishlaydi (5-band).
-- Oxirgi buyruq wildcard sertifikat va uning kaliti fayllarini ko'rsatadi
-  (`ssl_certificate` va `ssl_certificate_key`).
+`sites-enabled`dagi nom shu ikkinchi buyruqqa qarab tanlanadi. `default_server`
+yozilmagan bo'lsa, nginx har bir portda alifbo bo'yicha birinchi turgan saytni
+default qiladi: noma'lum nom bilan kelgan so'rovlar unga tushadi. 8080'da
+hozir birinchi `api.uzbmb.uz`, `admin-api` esa undan oldin keladi.
 
-**2. Ruxsat ro'yxati.** Adminlar va frontendchining IP'lari, server
-tekshiruvlari uchun `127.0.0.1`:
+- Natijada **8080 uchun** `default_server` bo'lsa, nom ahamiyatsiz:
+  `L=admin-api.conf`.
+- Bo'lmasa, `L=zz-admin-api.conf`. Shunda BFF boshqa saytlardan keyin
+  o'qiladi va ularning so'rovlari BFF'ga tushmaydi.
+
+**2. Ruxsat ro'yxati.** Adminlarning va frontendchining IP'lari, ya'ni ularning
+kompyuterlari IP'lari (proxy'niki emas), hamda tekshiruvlar uchun `127.0.0.1`.
+Masalan, server log'ida ko'ringan kompyuter `192.168.0.194` edi:
 
 ```bash
 cp -n /srv/admin-bff/deploy/nginx/admin-allowlist.conf /etc/nginx/snippets/
 nano /etc/nginx/snippets/admin-allowlist.conf    # "deny all;"dan oldin: allow 127.0.0.1; allow <IP/diapazon>; ...
 ```
 
-**3. Sertifikat.** Wildcard sertifikatga symlink: u yangilansa, BFF ham
-yangisini oladi.
+**3. Ulash:**
 
 ```bash
-install -d -m 0750 /etc/nginx/tls/admin-api
-ln -s <ssl_certificate_fayli>     /etc/nginx/tls/admin-api/fullchain.pem
-ln -s <ssl_certificate_key_fayli> /etc/nginx/tls/admin-api/privkey.pem
-```
+L=zz-admin-api.conf                              # yoki admin-api.conf (1-bandga qarang)
 
-**4. Ulash.** BFF'ning hamma nginx sozlamasi bitta faylda: `admin-api.conf`
-(API, ichki JWKS va `/metrics`, 8090'dagi hujjatlar). Domen unda allaqachon
-`kpi.uzbmb.uz`.
-
-`sites-enabled`dagi nom avval tekshiriladi. `default_server` yozilmagan
-bo'lsa, nginx alifboda birinchi turgan saytni default qiladi: IP orqali yoki
-noma'lum nom bilan kelgan so'rovlar unga tushadi. `admin-api` alifboda
-`api-iiv...` va `exam...`dan oldin keladi.
-
-```bash
-grep -rn "default_server" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/
-```
-
-- Natijada `listen 80 ... default_server` ham, `listen 443 ... default_server`
-  ham bo'lsa, default server aniq belgilangan va nom ahamiyatsiz:
-  `L=admin-api.conf`.
-- Bo'lmasa, `L=zz-admin-api.conf`. `zz-` bilan boshlangan nom boshqa
-  saytlardan keyin o'qiladi, shuning uchun ularning IP orqali kelgan
-  so'rovlari BFF'ga tushmaydi.
-
-```bash
-L=zz-admin-api.conf                              # yoki admin-api.conf (yuqoriga qarang)
-
-# Hozirgi holat (yozib qo'ying):
-curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
-curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
-
-# Oldingi alohida fayllar bo'lsa, olib tashlanadi:
+# Oldingi alohida fayllar va havolalar bo'lsa, olib tashlanadi:
 rm -f /etc/nginx/sites-enabled/admin-api.conf /etc/nginx/sites-enabled/zz-admin-api.conf \
       /etc/nginx/sites-enabled/zz-admin-bff-internal.conf /etc/nginx/sites-enabled/zz-admin-bff-docs.conf \
       /etc/nginx/sites-available/admin-bff-internal.conf /etc/nginx/sites-available/admin-bff-docs.conf
+rm -rf /etc/nginx/tls/admin-api                  # sertifikat endi kerak emas (TLS proxy'da)
 
 cp /srv/admin-bff/deploy/nginx/admin-api.conf /etc/nginx/sites-available/
 ln -s /etc/nginx/sites-available/admin-api.conf /etc/nginx/sites-enabled/$L
 nginx -t && systemctl reload nginx
-
-# Boshqa saytlar uchun avvalgidek bo'lishi kerak:
-curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
-curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
 ```
 
-Keyin `admin-bff update` repo'dagi faylni yangilasa, u serverga qaytadan
-nusxalanadi: `cp /srv/admin-bff/deploy/nginx/admin-api.conf /etc/nginx/sites-available/ && nginx -t && systemctl reload nginx`.
+`nginx -t` xato bersa, `reload` qilinmaydi va boshqa saytlar eski config bilan
+ishlashda davom etadi. Keyin `admin-bff update` repo'dagi faylni yangilasa, u
+qaytadan nusxalanadi:
+`cp /srv/admin-bff/deploy/nginx/admin-api.conf /etc/nginx/sites-available/ && nginx -t && systemctl reload nginx`.
 
-**5. Tekshirish.** `--resolve` domenni shu serverga yo'naltiradi, shuning uchun
-DNS bo'lmasa ham ishlaydi. Sertifikat ham tekshiriladi, `-k` yo'q:
+**4. Tekshirish:**
 
 ```bash
-curl -s --resolve kpi.uzbmb.uz:443:127.0.0.1 https://kpi.uzbmb.uz/health        # {"status":"ok"}
-curl -s --resolve kpi.uzbmb.uz:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://kpi.uzbmb.uz/metrics   # 404
-curl -s --resolve kpi.uzbmb.uz:80:127.0.0.1  -o /dev/null -w '%{http_code} %{redirect_url}\n' http://kpi.uzbmb.uz/   # 301 https://kpi.uzbmb.uz/
+curl -s -H 'Host: kpi.uzbmb.uz' http://127.0.0.1:8080/health     # {"status":"ok"}
+curl -s -H 'Host: kpi.uzbmb.uz' -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/metrics   # 404
+tail -f /var/log/nginx/access.log                                # brauzerda https://kpi.uzbmb.uz/health
 ```
 
-- **Boshqa saytlar uchun natija o'zgargan bo'lsa** (masalan, `403` chiqsa),
-  BFF default server bo'lib qolgan. U darhol o'chiriladi:
+Brauzerda `{"status":"ok"}` chiqishi, log'da esa so'rov **bir marta** `200`
+bilan va proxy'ning emas, kompyuterning IP'si bilan ko'rinishi kerak.
+
+- **`403 forbidden`** (JSON) chiqsa, kompyuterning IP'si allowlist'da yo'q.
+  IP log'dagi birinchi ustunda turadi.
+- **Hamma kompyuterdan `403`** chiqsa va log'da proxy'ning IP'si
+  (`192.168.200.234`) ko'rinsa, proxy `X-Forwarded-For` yubormayapti yoki
+  uning IP'si boshqa (`# PROXY` qatorlari).
+- **Boshqa saytlar ishlamay qolsa**, BFF sayti darhol o'chiriladi:
   `rm /etc/nginx/sites-enabled/$L && nginx -t && systemctl reload nginx`.
-- **`nginx -t` xato bersa**, `reload` qilinmaydi va boshqa saytlar eski
-  config bilan ishlashda davom etadi.
-- **`curl: (60) SSL certificate problem`** chiqsa, symlink noto'g'ri faylga
-  ko'rsatyapti yoki `fullchain.pem`da oraliq sertifikat yo'q.
-- **Ruxsat ro'yxatida yo'q IP** JSON'da `403 forbidden` oladi. 80-port faqat
-  HTTPS'ga yo'naltiradi, ruxsat 443'da tekshiriladi.
 - `https://kpi.uzbmb.uz/api/v1/docs` production'da faqat `admin:api:docs`
   ruxsati bor sessiya bilan ochiladi. Frontend bo'lmaguncha hujjatlar
   8090-portda o'qiladi ("API hujjatlari frontendchi uchun").
+- SSE (8-bosqich) qo'shilganda tashqi proxy javobni bufer qilmasligi kerak.
+  Bu proxy'ning egasi bilan kelishiladi.
 
 ### Frontend (domen berilganda)
 
-Frontend domeni `*.uzbmb.uz` ostida bo'ladi. U berilganda:
+Frontend domeni `*.uzbmb.uz` ostida bo'ladi va xuddi API kabi tashqi proxy
+orqali 8080'ga keladi. U berilganda:
 
 ```bash
-install -d -m 0750 /etc/nginx/tls/admin-frontend
-ln -s <ssl_certificate_fayli>     /etc/nginx/tls/admin-frontend/fullchain.pem
-ln -s <ssl_certificate_key_fayli> /etc/nginx/tls/admin-frontend/privkey.pem
 cp /srv/admin-bff/deploy/nginx/admin-frontend.conf /etc/nginx/sites-available/
-nano /etc/nginx/sites-available/admin-frontend.conf   # 2 ta server_name (# DOMEN): frontend domeni
+nano /etc/nginx/sites-available/admin-frontend.conf   # server_name (# DOMEN): frontend domeni
 nano /etc/admin-bff/admin-bff.env                     # FRONTEND_ORIGIN=https://<frontend domeni>
 systemctl restart admin-bff
 install -d -m 0755 /var/www/admin-frontend            # build shu yerga
 ln -s /etc/nginx/sites-available/admin-frontend.conf /etc/nginx/sites-enabled/zz-admin-frontend.conf
 nginx -t && systemctl reload nginx
 ```
+
+Tashqi proxy'da frontend domeni ham shu serverning 8080-portiga yo'naltiriladi.
 
 ## 11. Tekshirish
 
