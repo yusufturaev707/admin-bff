@@ -67,6 +67,13 @@ CORE_PERMISSIONS = (
     ),
     PermissionSpec("admin:roles:read", "Rollar va permission'lar ro'yxatini ko'rish"),
     PermissionSpec("admin:roles:write", "Rol yaratish, tahrirlash va o'chirish"),
+    PermissionSpec("admin:regions:read", "Hududlar ro'yxatini ko'rish"),
+    PermissionSpec("admin:regions:write", "Hudud qo'shish, tahrirlash, nofaol qilish va o'chirish"),
+    PermissionSpec("admin:organizations:read", "Tashkilotlar ro'yxatini ko'rish"),
+    PermissionSpec(
+        "admin:organizations:write",
+        "Tashkilot qo'shish, tahrirlash, nofaol qilish va o'chirish",
+    ),
     PermissionSpec("admin:api:docs", "API hujjatini (Swagger) ko'rish"),
     PermissionSpec("audit:logs:read", "Audit log'ni ko'rish: kim, qachon, nima qildi"),
     PermissionSpec(

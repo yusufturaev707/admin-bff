@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.auth.crypto import hmac_sha256_hex
-from app.auth.models import AdminUser
+from app.auth.models import User
 from app.auth.passwords import PasswordService
 from app.core.db import create_sessionmaker, database_url
 from app.settings import Settings
@@ -38,13 +38,13 @@ async def create_admin(
     password: str | None = None,
     must_change_password: bool = False,
     methods: Sequence[str] = ("password",),
-    pinfl: str | None = None,
+    imie: str | None = None,
     active: bool = True,
 ) -> Admin:
     username = username or f"admin_{secrets.token_hex(4)}"
     password = password or random_password()
     passwords = PasswordService(settings)
-    user = AdminUser(
+    user = User(
         id=uuid.uuid4(),
         username=username,
         password_hash=await passwords.hash(password),
@@ -52,8 +52,8 @@ async def create_admin(
         auth_methods=list(methods),
         is_active=active,
     )
-    if pinfl is not None:
-        user.oneid_pinfl_hash = hmac_sha256_hex(settings.pinfl_key(), pinfl)
+    if imie is not None:
+        user.oneid_imie_hash = hmac_sha256_hex(settings.pinfl_key(), imie)
     engine = create_async_engine(database_url(settings), poolclass=NullPool)
     try:
         async with create_sessionmaker(engine)() as db, db.begin():

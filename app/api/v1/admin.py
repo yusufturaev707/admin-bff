@@ -67,7 +67,9 @@ def user_out(view: UserView) -> dict[str, Any]:
         "is_active": user.is_active,
         "auth_methods": list(user.auth_methods),
         "must_change_password": user.must_change_password,
-        "pinfl_masked": user.pinfl_masked,
+        "imie_masked": user.imie_masked,
+        "org_id": user.org_id,
+        "region_id": user.region_id,
         "roles": [RoleRef(id=r.id, name=r.name) for r in view.roles],
         "created_at": user.created_at,
         "last_login_at": user.last_login_at,
@@ -95,7 +97,11 @@ def role_out(view: RoleView) -> RoleOut:
     operation_id="admin_users_list",
     summary="Adminlar ro'yxati",
     dependencies=[
-        Depends(known_query_params("page", "page_size", "q", "is_active", "role_id", "sort"))
+        Depends(
+            known_query_params(
+                "page", "page_size", "q", "is_active", "role_id", "org_id", "region_id", "sort"
+            )
+        )
     ],
     responses=_errors(401, 403, 422),
 )
@@ -106,11 +112,14 @@ async def list_users(
     q: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
     is_active: bool | None = None,
     role_id: uuid.UUID | None = None,
+    org_id: Annotated[int | None, Query(ge=1)] = None,
+    region_id: Annotated[int | None, Query(ge=1)] = None,
     sort: UserSort = "username",
 ) -> Page[UserOut]:
-    views, total = await service.list_users(
-        paging, UserFilters(q=q, is_active=is_active, role_id=role_id, sort=sort)
+    filters = UserFilters(
+        q=q, is_active=is_active, role_id=role_id, org_id=org_id, region_id=region_id, sort=sort
     )
+    views, total = await service.list_users(paging, filters)
     return Page[UserOut](
         items=[UserOut(**user_out(v)) for v in views],
         page=paging.page,
@@ -135,7 +144,9 @@ async def create_user(
         username=body.username,
         full_name=body.full_name,
         methods=body.auth_methods,
-        pinfl=body.pinfl,
+        imie=body.imie,
+        org_id=body.org_id,
+        region_id=body.region_id,
         role_ids=body.role_ids,
     )
     return UserCreated(**user_out(view), initial_password=password)

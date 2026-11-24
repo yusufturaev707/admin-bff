@@ -268,7 +268,7 @@ Kirish bir qadamdan iborat va ikki usuldan biri bilan bajariladi: username va pa
 - Hozircha shablon. Kirish oqimi, sozlamalar va testlar tayyor, OneID bilan gaplashadigan HTTP client esa yozilmagan (`app/auth/oneid.py`, `TODO(owner)`). U OneID integratsiya hujjatlari olingandan keyin yoziladi. Shungacha `ONEID_ENABLED=false`. Client yozilmagan holda OneID yoqilsa, ilova ishga tushmaydi.
 - OneID adminlikni bermaydi, u faqat odam kimligini tasdiqlaydi. Kirish faqat superadmin oldindan yaratgan, faol va PINFL'i biriktirilgan admin uchun ishlaydi. Avtomatik ro'yxatdan o'tish yo'q.
 - PINFL ochiq holda saqlanmaydi: qidirish uchun uning HMAC-SHA256 hash'i (`PINFL_HMAC_KEY`), ko'rsatish uchun maskalangan ko'rinishi saqlanadi.
-- Har bir admin uchun ruxsat etilgan usullarni (`password`, `oneid`) superadmin belgilaydi (`admin_users.auth_methods`).
+- Har bir admin uchun ruxsat etilgan usullarni (`password`, `oneid`) superadmin belgilaydi (`users.auth_methods`). **Egasining qarori (2026-11-24):** PINFL ustunlari va API maydonlari `imie` deb ataladi: `users.oneid_imie_hash`, `users.imie_masked`, so'rovda `imie`. Sozlama nomi `PINFL_HMAC_KEY` (credential `pinfl_hmac_key`) o'zgarmadi.
 - `state` bir martalik va brauzerga cookie orqali bog'langan. `code`ni BFF server tomonida almashtiradi, sessiya cookie'sini o'rnatib frontendga qaytaradi.
 - OneID yoqilganda BFF serveridan OneID serverlariga chiqish ochiladi (systemd `IPAddressAllow`, `TODO(owner)`).
 
@@ -281,7 +281,7 @@ Har bir endpoint aniq bir permission talab qiladi. Permission'siz route topilsa,
 - Wildcard faqat adminga berilgan permission'larda ishlatiladi: `faceid:*:read`, `faceid:*:*`, `*:*:*`. Endpoint talab qiladigan permission'da wildcard bo'lmaydi.
 - **Registry.** Har bir connector permission'larini `permissions.py`'da e'lon qiladi. Yadroning o'z permission'lari ham bor: `admin:*`, `audit:*`. `sync-permissions` buyrug'i ularni DB bilan sinxronlaydi. Agar `require()` ichida e'lon qilinmagan permission ishlatilsa, startup xato beradi.
 
-**Admin DB jadvallari:** `admin_users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `audit_log`, `pending_actions`.
+**Admin DB jadvallari:** `admin_users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `audit_log`, `pending_actions`. **Egasining qarori (2026-11-24, migratsiya 0006):** `admin_users` -> `users` (model `User`, `app/auth/models.py`); yangi `regions` (id, name, dtm_id, p_code, status) va `organizations` (id, name, region_id, status), butun son id, `status` bool (`app/directory/`). `users.org_id` va `users.region_id` ixtiyoriy, ON DELETE RESTRICT. CRUD: `/api/v1/admin/regions`, `/api/v1/admin/organizations`, ruxsatlar `admin:regions:*`, `admin:organizations:*`.
 
 **Principal** joriy admin haqidagi ma'lumot: `user_id`, `username`, `permissions` (frozenset), `scopes`, `session_id`.
 

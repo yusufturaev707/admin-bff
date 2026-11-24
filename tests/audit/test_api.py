@@ -105,7 +105,7 @@ async def test_changes_are_audited_with_before_and_after(
         json={
             "username": "operator_2",
             "auth_methods": ["password", "oneid"],
-            "pinfl": "31201234560045",
+            "imie": "31201234560045",
             "role_ids": [role.json()["id"]],
         },
         headers=h,
@@ -120,7 +120,7 @@ async def test_changes_are_audited_with_before_and_after(
         "admin",
         None,
     )
-    assert created.after["pinfl_masked"] == "3120*****0045"
+    assert created.after["imie_masked"] == "3120*****0045"
     assert "31201234560045" not in str(created.after)
     assert (updated.before["full_name"], updated.after["full_name"]) == (None, "Vali")
     assert (roles.before, roles.after) == (["operator"], [])

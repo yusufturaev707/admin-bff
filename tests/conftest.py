@@ -16,9 +16,10 @@ import asyncio
 import base64
 import os
 import secrets
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Any
 
 import asyncpg
 import httpx
@@ -107,7 +108,7 @@ class Services:
         """Empties the test database and this session's Redis keys."""
         conn = await self.pg_connect()
         try:
-            await conn.execute("TRUNCATE admin_users, roles, permissions CASCADE")
+            await conn.execute("TRUNCATE users, roles, permissions, organizations, regions CASCADE")
             await reset_audit(conn)
         finally:
             await conn.close()
@@ -250,3 +251,25 @@ async def app(
 async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     async with app_client(app) as c:
         yield c
+
+
+@pytest.fixture
+async def browsers(
+    app: FastAPI, client: httpx.AsyncClient, clock: FakeClock
+) -> AsyncIterator[Callable[..., Awaitable[Any]]]:
+    """`await browsers(admin)` signs `admin` in with its own client (a Browser)."""
+    # Imported here: tests.helpers.auth imports this module.
+    from tests.helpers.auth import Admin, login
+    from tests.helpers.browser import Browser
+    from tests.helpers.client import extra_client
+
+    opened: list[httpx.AsyncClient] = []
+
+    async def open_for(admin: Admin) -> Browser:
+        browser_client = extra_client(app)
+        opened.append(browser_client)
+        return Browser(browser_client, await login(browser_client, admin, clock))
+
+    yield open_for
+    for c in opened:
+        await c.aclose()

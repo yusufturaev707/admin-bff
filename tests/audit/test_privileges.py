@@ -127,7 +127,15 @@ async def test_app_role_appends_but_cannot_change_the_audit_log(
 async def test_app_role_has_full_access_to_the_other_tables(role_settings: Settings) -> None:
     conn = await _as_role(role_settings)
     try:
-        for table in ("admin_users", "roles", "permissions", "role_permissions", "user_roles"):
+        for table in (
+            "users",
+            "roles",
+            "permissions",
+            "role_permissions",
+            "user_roles",
+            "regions",
+            "organizations",
+        ):
             for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
                 assert await conn.fetchval(
                     "SELECT has_table_privilege($1, $2)", table, privilege
@@ -254,6 +262,17 @@ async def test_the_service_works_with_the_restricted_role(
         listed = await c.get("/api/v1/audit", params={"action": "admin.role.create"})
         assert listed.status_code == 200
         assert [i["after"]["name"] for i in listed.json()["items"]] == ["auditor"]
+        # Identity ids (regions, organizations) need no grant on their sequence.
+        region = await c.post(
+            "/api/v1/admin/regions", json={"name": "Jizzax"}, headers={"X-CSRF-Token": csrf}
+        )
+        assert region.status_code == 201, region.text
+        org = await c.post(
+            "/api/v1/admin/organizations",
+            json={"name": "Jizzax markazi", "region_id": region.json()["id"]},
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert org.status_code == 201, org.text
     assert {e.action for e in recorder.events} >= {"auth.login", "admin.role.create"}
     async with sessions(role_settings) as db:
         await DbAuditSink(db, clock=clock).write(event())

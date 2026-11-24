@@ -17,7 +17,7 @@ from redis.asyncio import Redis
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.auth.models import AdminUser
+from app.auth.models import User
 from app.auth.sessions import SessionData
 from app.rbac.models import RolePermission, UserRole
 from app.rbac.permissions import any_covers, pattern_matches
@@ -110,7 +110,7 @@ class PrincipalLoader:
 
     async def _load_from_db(self, user_id: uuid.UUID) -> Principal | None:
         async with self._db() as db:
-            user = await db.get(AdminUser, user_id)
+            user = await db.get(User, user_id)
             if user is None or not user.is_active:
                 return None
             permissions = await db.scalars(
@@ -135,10 +135,10 @@ class PrincipalLoader:
         if not ids:
             return []
         rows = await db.execute(
-            update(AdminUser)
-            .where(AdminUser.id.in_(ids))
-            .values(perm_version=AdminUser.perm_version + 1)
-            .returning(AdminUser.id, AdminUser.perm_version)
+            update(User)
+            .where(User.id.in_(ids))
+            .values(perm_version=User.perm_version + 1)
+            .returning(User.id, User.perm_version)
         )
         return [(user_id, version) for user_id, version in rows.all()]
 

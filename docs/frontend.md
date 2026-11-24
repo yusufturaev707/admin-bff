@@ -168,6 +168,10 @@ qarab quradi:
 | `POST /admin/users/{id}/reset-password`, `.../unlock` | `admin:users:security` |
 | `GET /admin/roles`, `GET /admin/roles/{id}`, `GET /admin/permissions` | `admin:roles:read` |
 | `POST /admin/roles`, `PATCH /admin/roles/{id}`, `DELETE /admin/roles/{id}` | `admin:roles:write` |
+| `GET /admin/regions`, `GET /admin/regions/{id}` | `admin:regions:read` |
+| `POST /admin/regions`, `PATCH /admin/regions/{id}`, `DELETE /admin/regions/{id}` | `admin:regions:write` |
+| `GET /admin/organizations`, `GET /admin/organizations/{id}` | `admin:organizations:read` |
+| `POST /admin/organizations`, `PATCH /admin/organizations/{id}`, `DELETE /admin/organizations/{id}` | `admin:organizations:write` |
 
 - **Vaqtinchalik parol.** Admin yaratilganda yoki parol tiklanganda javobda
   `initial_password` keladi. U faqat shu javobda, bir marta keladi: ko'rsating
@@ -184,8 +188,33 @@ qarab quradi:
   - adminlarga biriktirilgan rolni o'chirib bo'lmaydi;
   - `superadmin` tizim roli o'zgarmaydi;
   - oxirgi faol superadminni bloklab ham, rolidan ayirib ham bo'lmaydi.
-- **OneID.** Admin `auth_methods: ["oneid"]` bilan yaratilsa, `pinfl` majburiy.
-  Javobda faqat maskalangan ko'rinishi keladi (`pinfl_masked`).
+- **OneID.** Admin `auth_methods: ["oneid"]` bilan yaratilsa, `imie`
+  (fuqaroning PINFL raqami, 14 ta raqam) majburiy. Javobda faqat maskalangan
+  ko'rinishi keladi (`imie_masked`). `PATCH`da `imie: null` OneID bog'lanishini
+  olib tashlaydi.
+- **Tashkilot va hudud.** Foydalanuvchida `org_id` va `region_id` bor, ikkalasi
+  ham ixtiyoriy. Faqat `org_id` yuborilsa, `region_id` tashkilotning hududi
+  bo'ladi. Ikkalasi yuborilsa, ular mos bo'lishi kerak, aks holda `422
+  region_mismatch`. Yangi biriktiriladigan tashkilot va hudud faol
+  (`status: true`) bo'lishi shart (`unknown_organization`, `unknown_region`).
+  `PATCH`da yangi `org_id` hududni ham o'zi bilan olib keladi, `org_id: null`
+  esa hududni o'zgartirmaydi. Ro'yxatda `?org_id=` va `?region_id=` filtrlari
+  bor, `/me`da ham ikkala maydon keladi.
+
+### Hududlar va tashkilotlar
+
+- **Id'lar butun son.** `status: true` faol, `false` nofaol degani.
+- **Hudud:** `name` (takrorlanmaydi), `dtm_id` (DTM tizimlaridagi id,
+  takrorlanmaydi), `p_code`. Ro'yxatda `?q=` (nom bo'yicha) va `?status=`
+  filtrlari bor.
+- **Tashkilot:** `name`, `region_id`, `status`. Bitta hududda bir xil nomli
+  ikkita tashkilot bo'lmaydi. Yangi tashkilot faol hududga qo'shiladi.
+  Ro'yxatda `?q=`, `?status=` va `?region_id=` filtrlari bor.
+- **`PATCH`** faqat yuborilgan maydonlarni o'zgartiradi. `name` va `status`ni
+  `null` qilib bo'lmaydi (`null_not_allowed`).
+- **O'chirish.** Tashkilot yoki foydalanuvchi biriktirilgan hududni, shuningdek
+  foydalanuvchi biriktirilgan tashkilotni o'chirib bo'lmaydi (`409`). Ularni
+  `status: false` bilan nofaol qiling.
 
 ## Audit log: `/api/v1/audit`
 

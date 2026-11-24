@@ -27,13 +27,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.audit.sink import AuditEvent, AuditOutcome, AuditSink
 from app.auth.crypto import hmac_sha256_hex
 from app.auth.lockout import LoginLimiter
-from app.auth.models import AdminUser, AuthMethod, normalize_username
+from app.auth.models import AuthMethod, User, normalize_username
 from app.auth.passwords import PasswordPolicyError, PasswordService, check_password_policy
 from app.auth.service import RequestMeta
 from app.auth.sessions import SessionStore
 from app.core.errors import AppError, ErrorCode, field_error
 from app.core.pagination import PageParams
 from app.core.pii import mask_pinfl
+from app.directory.models import Organization, Region
 from app.rbac.models import SUPERADMIN_LOCK_KEY, SUPERADMIN_ROLE, Role, RolePermission, UserRole
 from app.rbac.permissions import is_valid_pattern
 from app.rbac.principal import Principal, PrincipalLoader
@@ -48,15 +49,15 @@ LAST_SUPERADMIN = "Oxirgi faol superadminni o'chirib yoki bloklab bo'lmaydi"
 _SUPERADMIN_LOCK = text("SELECT pg_advisory_xact_lock(:key)")
 
 _SORT_COLUMNS = {
-    "username": AdminUser.username,
-    "created_at": AdminUser.created_at,
-    "last_login_at": AdminUser.last_login_at,
+    "username": User.username,
+    "created_at": User.created_at,
+    "last_login_at": User.last_login_at,
 }
 
 
 @dataclass(frozen=True, slots=True)
 class UserView:
-    user: AdminUser
+    user: User
     roles: list[Role]
 
 
@@ -72,6 +73,8 @@ class UserFilters:
     q: str | None = None
     is_active: bool | None = None
     role_id: uuid.UUID | None = None
+    org_id: int | None = None
+    region_id: int | None = None
     sort: str = "username"
 
 
@@ -140,11 +143,46 @@ class AdminService:
                 continue
             return candidate
 
-    def _pinfl(self, pinfl: str) -> tuple[str, str]:
-        return hmac_sha256_hex(self._settings.pinfl_key(), pinfl), mask_pinfl(pinfl)
+    def _imie(self, imie: str) -> tuple[str, str]:
+        """The IMIE (PINFL) as stored: its HMAC for the OneID lookup, masked for display."""
+        return hmac_sha256_hex(self._settings.pinfl_key(), imie), mask_pinfl(imie)
 
-    async def _user_or_404(self, db: AsyncSession, user_id: uuid.UUID) -> AdminUser:
-        user = await db.get(AdminUser, user_id)
+    @staticmethod
+    async def _placement(
+        db: AsyncSession,
+        org_id: int | None,
+        region_id: int | None,
+        *,
+        current: tuple[int | None, int | None] = (None, None),
+    ) -> tuple[int | None, int | None]:
+        """The user's organization and region, checked. Without a region the
+        organization's region is taken; with both they must agree. A newly
+        set organization or region must exist and be active (`status`); one the
+        user already has is kept even if it was deactivated since."""
+        if org_id is not None:
+            org = await db.get(Organization, org_id)
+            if org is None or (org_id != current[0] and not org.status):
+                raise field_error(
+                    ("body", "org_id"), "unknown_organization", "Bunday faol tashkilot topilmadi"
+                )
+            if region_id is None:
+                region_id = org.region_id
+            elif region_id != org.region_id:
+                raise field_error(
+                    ("body", "region_id"),
+                    "region_mismatch",
+                    "Hudud tashkilotning hududi bilan bir xil bo'lishi kerak",
+                )
+        if region_id is not None and region_id != current[1]:
+            region = await db.get(Region, region_id)
+            if region is None or not region.status:
+                raise field_error(
+                    ("body", "region_id"), "unknown_region", "Bunday faol hudud topilmadi"
+                )
+        return org_id, region_id
+
+    async def _user_or_404(self, db: AsyncSession, user_id: uuid.UUID) -> User:
+        user = await db.get(User, user_id)
         if user is None:
             raise AppError(ErrorCode.NOT_FOUND)
         return user
@@ -184,8 +222,8 @@ class AdminService:
         rows = await db.scalars(
             select(UserRole.user_id)
             .join(Role, Role.id == UserRole.role_id)
-            .join(AdminUser, AdminUser.id == UserRole.user_id)
-            .where(Role.is_system, Role.name == SUPERADMIN_ROLE, AdminUser.is_active)
+            .join(User, User.id == UserRole.user_id)
+            .where(Role.is_system, Role.name == SUPERADMIN_ROLE, User.is_active)
         )
         return set(rows.all())
 
@@ -216,15 +254,13 @@ class AdminService:
         if not actor.covers_all(patterns):
             raise AppError(ErrorCode.FORBIDDEN, FORBIDDEN_GRANT)
 
-    async def _ensure_can_manage(
-        self, db: AsyncSession, actor: Principal, target: AdminUser
-    ) -> None:
+    async def _ensure_can_manage(self, db: AsyncSession, actor: Principal, target: User) -> None:
         if target.id == actor.user_id:
             raise AppError(ErrorCode.FORBIDDEN, FORBIDDEN_SELF)
         if not actor.covers_all(await self._user_patterns(db, target.id)):
             raise AppError(ErrorCode.FORBIDDEN, FORBIDDEN_HIGHER)
 
-    async def _views(self, db: AsyncSession, users: Sequence[AdminUser]) -> list[UserView]:
+    async def _views(self, db: AsyncSession, users: Sequence[User]) -> list[UserView]:
         ids = [u.id for u in users]
         roles: dict[uuid.UUID, list[Role]] = {i: [] for i in ids}
         if ids:
@@ -254,28 +290,30 @@ class AdminService:
     async def list_users(
         self, params: PageParams, filters: UserFilters
     ) -> tuple[list[UserView], int]:
-        query = select(AdminUser)
+        query = select(User)
         if filters.q:
             query = query.where(
                 or_(
-                    AdminUser.username.contains(filters.q.lower(), autoescape=True),
-                    AdminUser.full_name.icontains(filters.q, autoescape=True),
+                    User.username.contains(filters.q.lower(), autoescape=True),
+                    User.full_name.icontains(filters.q, autoescape=True),
                 )
             )
         if filters.is_active is not None:
-            query = query.where(AdminUser.is_active == filters.is_active)
+            query = query.where(User.is_active == filters.is_active)
         if filters.role_id is not None:
             query = query.where(
-                AdminUser.id.in_(
-                    select(UserRole.user_id).where(UserRole.role_id == filters.role_id)
-                )
+                User.id.in_(select(UserRole.user_id).where(UserRole.role_id == filters.role_id))
             )
+        if filters.org_id is not None:
+            query = query.where(User.org_id == filters.org_id)
+        if filters.region_id is not None:
+            query = query.where(User.region_id == filters.region_id)
         column = _SORT_COLUMNS[filters.sort.lstrip("-")]
         order = column.desc().nulls_last() if filters.sort.startswith("-") else column.asc()
         async with self._db() as db:
             total = await db.scalar(select(func.count()).select_from(query.subquery()))
             users = await db.scalars(
-                query.order_by(order, AdminUser.id).offset(params.offset).limit(params.page_size)
+                query.order_by(order, User.id).offset(params.offset).limit(params.page_size)
             )
             return await self._views(db, users.all()), int(total or 0)
 
@@ -290,8 +328,10 @@ class AdminService:
         username: str,
         full_name: str | None,
         methods: Sequence[AuthMethod],
-        pinfl: str | None,
+        imie: str | None,
         role_ids: Sequence[uuid.UUID],
+        org_id: int | None = None,
+        region_id: int | None = None,
     ) -> tuple[UserView, str | None]:
         normalized = normalize_username(username)
         if normalized is None:
@@ -301,12 +341,12 @@ class AdminService:
                 "3-64 belgi: kichik lotin harflari, raqamlar, '.', '_' yoki '-'",
             )
         method_values = sorted({m.value for m in methods})
-        if AuthMethod.ONEID.value in method_values and pinfl is None:
-            raise field_error(("body", "pinfl"), "pinfl_required", "OneID uchun PINFL kerak")
+        if AuthMethod.ONEID.value in method_values and imie is None:
+            raise field_error(("body", "imie"), "imie_required", "OneID uchun IMIE (PINFL) kerak")
         password = (
             self._new_password(normalized) if AuthMethod.PASSWORD.value in method_values else None
         )
-        user = AdminUser(
+        user = User(
             id=uuid.uuid4(),
             username=normalized,
             full_name=full_name,
@@ -314,10 +354,11 @@ class AdminService:
             password_hash=await self._passwords.hash(password) if password else None,
             must_change_password=password is not None,
         )
-        if pinfl is not None:
-            user.oneid_pinfl_hash, user.pinfl_masked = self._pinfl(pinfl)
+        if imie is not None:
+            user.oneid_imie_hash, user.imie_masked = self._imie(imie)
         try:
             async with self._db() as db, db.begin():
+                user.org_id, user.region_id = await self._placement(db, org_id, region_id)
                 roles = await self._roles_or_422(db, role_ids)
                 self._ensure_grants(actor, await self._role_patterns(db, (r.id for r in roles)))
                 db.add(user)
@@ -325,7 +366,7 @@ class AdminService:
                 db.add_all(UserRole(user_id=user.id, role_id=r.id) for r in roles)
         except IntegrityError as exc:
             raise AppError(
-                ErrorCode.CONFLICT, "Bunday login yoki PINFL bilan admin allaqachon bor"
+                ErrorCode.CONFLICT, "Bunday login yoki IMIE (PINFL) bilan admin allaqachon bor"
             ) from exc
         await self._audit(
             "admin.user.create",
@@ -338,7 +379,9 @@ class AdminService:
                 "full_name": full_name,
                 "auth_methods": method_values,
                 "roles": sorted(r.name for r in roles),
-                "pinfl_masked": user.pinfl_masked,
+                "imie_masked": user.imie_masked,
+                "org_id": user.org_id,
+                "region_id": user.region_id,
             },
         )
         return await self._view(user.id), password
@@ -363,15 +406,27 @@ class AdminService:
                     "full_name": user.full_name,
                     "is_active": user.is_active,
                     "auth_methods": list(user.auth_methods),
-                    "pinfl_masked": user.pinfl_masked,
+                    "imie_masked": user.imie_masked,
+                    "org_id": user.org_id,
+                    "region_id": user.region_id,
                 }
                 if "full_name" in changes:
                     user.full_name = changes["full_name"]
-                if "pinfl" in changes:
-                    if changes["pinfl"] is None:
-                        user.oneid_pinfl_hash = user.pinfl_masked = None
+                if "org_id" in changes or "region_id" in changes:
+                    org_id = changes.get("org_id", user.org_id)
+                    if "region_id" in changes:
+                        region_id = changes["region_id"]
                     else:
-                        user.oneid_pinfl_hash, user.pinfl_masked = self._pinfl(changes["pinfl"])
+                        # A new organization brings its region; none keeps the region.
+                        region_id = None if org_id is not None else user.region_id
+                    user.org_id, user.region_id = await self._placement(
+                        db, org_id, region_id, current=(user.org_id, user.region_id)
+                    )
+                if "imie" in changes:
+                    if changes["imie"] is None:
+                        user.oneid_imie_hash = user.imie_masked = None
+                    else:
+                        user.oneid_imie_hash, user.imie_masked = self._imie(changes["imie"])
                     revoke = True
                 if changes.get("auth_methods") is not None:
                     methods = sorted({AuthMethod(m).value for m in changes["auth_methods"]})
@@ -381,9 +436,9 @@ class AdminService:
                         user.must_change_password = True
                     user.auth_methods = methods
                     revoke = True
-                if AuthMethod.ONEID.value in user.auth_methods and user.oneid_pinfl_hash is None:
+                if AuthMethod.ONEID.value in user.auth_methods and user.oneid_imie_hash is None:
                     raise field_error(
-                        ("body", "pinfl"), "pinfl_required", "OneID uchun PINFL kerak"
+                        ("body", "imie"), "imie_required", "OneID uchun IMIE (PINFL) kerak"
                     )
                 if changes.get("is_active") is not None and changes["is_active"] != user.is_active:
                     if not changes["is_active"]:
@@ -394,7 +449,9 @@ class AdminService:
                     revoke = True
                 versions = await self._loader.bump(db, [user.id]) if revoke else []
         except IntegrityError as exc:
-            raise AppError(ErrorCode.CONFLICT, "Bu PINFL boshqa adminga biriktirilgan") from exc
+            raise AppError(
+                ErrorCode.CONFLICT, "Bu IMIE (PINFL) boshqa adminga biriktirilgan"
+            ) from exc
         await self._after_change(versions, revoke=[user_id] if revoke else [])
         view = await self._view(user_id)
         await self._audit(
@@ -408,7 +465,9 @@ class AdminService:
                 "full_name": view.user.full_name,
                 "is_active": view.user.is_active,
                 "auth_methods": list(view.user.auth_methods),
-                "pinfl_masked": view.user.pinfl_masked,
+                "imie_masked": view.user.imie_masked,
+                "org_id": view.user.org_id,
+                "region_id": view.user.region_id,
             },
         )
         return view, password

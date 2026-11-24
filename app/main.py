@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app import __version__
 from app.api import docs, health
-from app.api.v1 import admin, audit, auth, me
+from app.api.v1 import admin, audit, auth, directory, me
 from app.audit.middleware import AuditRequestMiddleware
 from app.audit.service import AuditLogService
 from app.audit.sink import AuditSink
@@ -41,6 +41,7 @@ from app.core.redis import create_redis, ping_redis
 from app.core.request_id import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.routes import validate_routes
 from app.core.time import Clock, utcnow
+from app.directory.service import DirectoryService
 from app.rbac.catalogue import sync_permission_table
 from app.rbac.principal import PrincipalLoader
 from app.rbac.registry import PermissionRegistry, build_registry
@@ -204,6 +205,7 @@ def _lifespan(
                 passwords=auth_service.passwords,
                 audit=audit,
             )
+            app.state.directory_service = DirectoryService(db, audit)
             app.state.audit_log_service = AuditLogService(
                 db, redis=redis, prefix=settings.redis_key_prefix, audit=audit
             )
@@ -299,6 +301,7 @@ def create_app(
     app.include_router(auth.router)
     app.include_router(me.router)
     app.include_router(admin.router)
+    app.include_router(directory.router)
     app.include_router(audit.router)
     docs.install_openapi(app)
     return app

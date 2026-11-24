@@ -110,7 +110,7 @@ async def test_oneid_login(
 ) -> None:
     _, client = oneid_client
     pinfl = random_pinfl()
-    admin = await create_admin(oneid_settings, clock, methods=("password", "oneid"), pinfl=pinfl)
+    admin = await create_admin(oneid_settings, clock, methods=("password", "oneid"), imie=pinfl)
     oneid.codes["good-code"] = pinfl
 
     state = await _start(client)
@@ -137,7 +137,7 @@ async def test_oneid_first_sign_in_with_a_password_to_change(
         oneid_settings,
         clock,
         methods=("password", "oneid"),
-        pinfl=pinfl,
+        imie=pinfl,
         must_change_password=True,
     )
     oneid.codes["code"] = pinfl
@@ -158,7 +158,7 @@ async def test_oneid_state_must_match_the_browser_and_is_single_use(
 ) -> None:
     app, client = oneid_client
     pinfl = random_pinfl()
-    await create_admin(oneid_settings, clock, methods=("oneid",), pinfl=pinfl)
+    await create_admin(oneid_settings, clock, methods=("oneid",), imie=pinfl)
     oneid.codes["code"] = pinfl
 
     state = await _start(client)
@@ -188,9 +188,9 @@ async def test_oneid_rejects_unknown_or_not_allowed_admins(
 ) -> None:
     _, client = oneid_client
     password_only = random_pinfl()
-    await create_admin(oneid_settings, clock, methods=("password",), pinfl=password_only)
+    await create_admin(oneid_settings, clock, methods=("password",), imie=password_only)
     inactive = random_pinfl()
-    await create_admin(oneid_settings, clock, methods=("oneid",), pinfl=inactive, active=False)
+    await create_admin(oneid_settings, clock, methods=("oneid",), imie=inactive, active=False)
     oneid.codes |= {"unknown": random_pinfl(), "password-only": password_only, "inactive": inactive}
 
     for code in ("unknown", "password-only", "inactive", "rejected-by-oneid"):
@@ -198,7 +198,7 @@ async def test_oneid_rejects_unknown_or_not_allowed_admins(
         response = await client.get(f"{AUTH}/oneid/callback", params={"code": code, "state": state})
         assert _error_redirect(response), code
     reasons = [e.details.get("reason") for e in audit.find("auth.login", AuditOutcome.DENIED)]
-    assert reasons == ["unknown_pinfl", "method_not_allowed", "inactive", "oneid_error"]
+    assert reasons == ["unknown_imie", "method_not_allowed", "inactive", "oneid_error"]
 
 
 async def test_enabled_oneid_without_a_client_stops_startup(oneid_settings: Settings) -> None:

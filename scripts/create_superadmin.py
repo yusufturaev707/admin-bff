@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.sink import AuditEvent, AuditOutcome
 from app.audit.writer import DbAuditSink
-from app.auth.models import AdminUser, AuthMethod, normalize_username
+from app.auth.models import AuthMethod, User, normalize_username
 from app.auth.passwords import PasswordPolicyError, PasswordService, check_password_policy
 from app.core.db import create_engine, create_sessionmaker, database_revision, migration_heads
 from app.core.time import utcnow
@@ -82,10 +82,10 @@ async def create_superadmin(settings: Settings, username: str, password: str) ->
             raise ScriptError("Baza sxemasi eskirgan. Avval: uv run alembic upgrade head")
         password_hash = await PasswordService(settings).hash(password)
         async with create_sessionmaker(engine)() as db, db.begin():
-            if await db.scalar(select(AdminUser.id).where(AdminUser.username == username)):
+            if await db.scalar(select(User.id).where(User.username == username)):
                 raise ScriptError(f"'{username}' nomli admin allaqachon bor")
             role = await _superadmin_role(db)
-            user = AdminUser(
+            user = User(
                 id=uuid.uuid4(),
                 username=username,
                 password_hash=password_hash,

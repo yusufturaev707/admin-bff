@@ -10,6 +10,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     CheckConstraint,
+    ForeignKey,
     String,
     Text,
     func,
@@ -19,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
+import app.directory.models  # noqa: F401  (users.org_id/region_id refer to its tables)
 from app.core.db import Base
 
 _USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
@@ -35,8 +37,10 @@ class AuthMethod(StrEnum):
     ONEID = "oneid"  # citizen's OneID
 
 
-class AdminUser(Base):
-    __tablename__ = "admin_users"
+class User(Base):
+    """A user of the admin panel (was `admin_users`, renamed 2026-11-24)."""
+
+    __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("username = lower(username)", name="username_lowercase"),
         CheckConstraint(
@@ -59,10 +63,19 @@ class AdminUser(Base):
         ARRAY(Text), server_default=text("ARRAY['password']::text[]")
     )
 
-    # OneID link: HMAC-SHA256 of the PINFL (lookup) and its masked form (display).
-    # The PINFL itself is not stored.
-    oneid_pinfl_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
-    pinfl_masked: Mapped[str | None] = mapped_column(String(16))
+    # OneID link: HMAC-SHA256 of the citizen's IMIE (PINFL, 14 digits) for the
+    # lookup and its masked form for display. The IMIE itself is not stored.
+    oneid_imie_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    imie_masked: Mapped[str | None] = mapped_column(String(16))
+
+    # Where the user works (app.directory). RESTRICT: an organization or a
+    # region still in use cannot be deleted.
+    org_id: Mapped[int | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
+    )
+    region_id: Mapped[int | None] = mapped_column(
+        ForeignKey("regions.id", ondelete="RESTRICT"), index=True
+    )
 
     is_active: Mapped[bool] = mapped_column(server_default=true())
     # Bumped when roles change (Phase 2); sessions carry the version they saw.

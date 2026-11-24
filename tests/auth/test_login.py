@@ -207,9 +207,7 @@ async def test_password_hash_is_upgraded_on_login(
             assert (await start_login(client, admin)).status_code == 200  # new hash works
         conn = await services.pg_connect()
         try:
-            stored = await conn.fetchval(
-                "SELECT password_hash FROM admin_users WHERE id = $1", admin.id
-            )
+            stored = await conn.fetchval("SELECT password_hash FROM users WHERE id = $1", admin.id)
         finally:
             await conn.close()
         assert ",t=2," in stored

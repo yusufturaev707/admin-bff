@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.audit.sink import AuditEvent, AuditOutcome, AuditSink
 from app.auth.crypto import new_token, sha256_hex
 from app.auth.lockout import LoginLimiter
-from app.auth.models import AdminUser, AuthMethod, normalize_username
+from app.auth.models import AuthMethod, User, normalize_username
 from app.auth.oneid import OneIdClient
 from app.auth.passwords import PasswordPolicyError, PasswordService, check_password_policy
 from app.auth.providers import (
@@ -60,7 +60,7 @@ class OneIdLoginError(Exception):
     """Any OneID callback failure; the browser gets one generic error page."""
 
 
-def _pending_steps(user: AdminUser) -> list[PendingStep]:
+def _pending_steps(user: User) -> list[PendingStep]:
     # A OneID-only admin has no password to change.
     if user.must_change_password and user.password_hash is not None:
         return [PendingStep.PASSWORD_CHANGE]
@@ -110,7 +110,7 @@ class AuthService:
         outcome: AuditOutcome,
         meta: RequestMeta,
         *,
-        user: AdminUser | None = None,
+        user: User | None = None,
         username: str | None = None,
         session: SessionData | None = None,
         **details: Any,
@@ -176,7 +176,7 @@ class AuthService:
             logger.warning("auth_lockout", rule=rule.name, ip=meta.ip)
 
     async def _start_session(
-        self, user: AdminUser, method: AuthMethod, meta: RequestMeta, step: str
+        self, user: User, method: AuthMethod, meta: RequestMeta, step: str
     ) -> SessionStarted:
         """Always a new session id (session fixation protection)."""
         session_id, session = await self.sessions.create(
@@ -255,8 +255,8 @@ class AuthService:
         """Used on password change, block and role change."""
         return await self.sessions.delete_all_for_user(user_id)
 
-    async def _load_user(self, db: AsyncSession, session: SessionData) -> AdminUser:
-        user = await db.get(AdminUser, session.user_id)
+    async def _load_user(self, db: AsyncSession, session: SessionData) -> User:
+        user = await db.get(User, session.user_id)
         if user is None or not user.is_active:
             await self.sessions.delete(session)
             raise AppError(ErrorCode.SESSION_EXPIRED)

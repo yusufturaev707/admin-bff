@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.audit.models
 import app.auth.models
+import app.directory.models
 import app.rbac.models  # noqa: F401  (all register their tables on Base.metadata)
 from app.audit.models import include_name
 from app.core.db import Base, driver_connect_args, owner_database_url

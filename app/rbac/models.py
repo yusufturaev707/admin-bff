@@ -57,7 +57,7 @@ class UserRole(Base):
     __tablename__ = "user_roles"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("admin_users.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     # RESTRICT: a role that is still assigned cannot be deleted (section 7).
     role_id: Mapped[uuid.UUID] = mapped_column(

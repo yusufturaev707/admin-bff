@@ -2,7 +2,6 @@
 
 import asyncio
 import uuid
-from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -15,40 +14,11 @@ from app.rbac.models import SUPERADMIN_ROLE
 from app.rbac.service import AdminService
 from app.settings import Settings
 from tests.conftest import AuditRecorder, FakeClock
-from tests.helpers.auth import AUTH, Admin, create_admin, login, random_password
+from tests.helpers.auth import AUTH, create_admin, random_password
 from tests.helpers.client import extra_client
 from tests.helpers.rbac import grant, make_admin_with, make_role, make_superadmin
 
 ADMIN = "/api/v1/admin"
-
-
-class Browser:
-    """One signed-in admin: a client plus its CSRF token."""
-
-    def __init__(self, client: httpx.AsyncClient, csrf: str) -> None:
-        self.client = client
-        self.headers = {"X-CSRF-Token": csrf}
-
-    async def get(self, path: str, **kwargs: Any) -> httpx.Response:
-        return await self.client.get(path, **kwargs)
-
-    async def send(self, method: str, path: str, json: Any = None) -> httpx.Response:
-        return await self.client.request(method, path, json=json, headers=self.headers)
-
-
-@pytest.fixture
-async def browsers(app: FastAPI, client: httpx.AsyncClient, clock: FakeClock) -> AsyncIterator[Any]:
-    """`await browsers(admin)` signs `admin` in with its own client."""
-    opened: list[httpx.AsyncClient] = []
-
-    async def open_for(admin: Admin) -> Browser:
-        browser_client = extra_client(app)
-        opened.append(browser_client)
-        return Browser(browser_client, await login(browser_client, admin, clock))
-
-    yield open_for
-    for c in opened:
-        await c.aclose()
 
 
 async def test_missing_permission_is_forbidden_and_audited(
@@ -365,17 +335,17 @@ async def test_oneid_link_needs_a_pinfl(
     created = await boss.send(
         "POST",
         f"{ADMIN}/users",
-        {"username": "citizen", "auth_methods": ["oneid"], "pinfl": "31201234560045"},
+        {"username": "citizen", "auth_methods": ["oneid"], "imie": "31201234560045"},
     )
     assert created.status_code == 201
     body = created.json()
-    assert body["pinfl_masked"] == "3120*****0045"
+    assert body["imie_masked"] == "3120*****0045"
     assert body["initial_password"] is None  # OneID only: no password
     assert "31201234560045" not in created.text
     duplicate = await boss.send(
         "POST",
         f"{ADMIN}/users",
-        {"username": "citizen2", "auth_methods": ["oneid"], "pinfl": "31201234560045"},
+        {"username": "citizen2", "auth_methods": ["oneid"], "imie": "31201234560045"},
     )
     assert duplicate.status_code == 409
 
@@ -398,7 +368,7 @@ async def test_editing_an_admin(browsers: Any, settings: Settings, clock: FakeCl
     created = await boss.send(
         "POST",
         f"{ADMIN}/users",
-        {"username": "citizen_only", "auth_methods": ["oneid"], "pinfl": "31201234560045"},
+        {"username": "citizen_only", "auth_methods": ["oneid"], "imie": "31201234560045"},
     )
     user_id = created.json()["id"]
 
@@ -410,17 +380,15 @@ async def test_editing_an_admin(browsers: Any, settings: Settings, clock: FakeCl
     assert both.json()["initial_password"]
     assert both.json()["must_change_password"] is True
 
-    relinked = await boss.send("PATCH", f"{ADMIN}/users/{user_id}", {"pinfl": "41201234560099"})
-    assert relinked.json()["pinfl_masked"] == "4120*****0099"
+    relinked = await boss.send("PATCH", f"{ADMIN}/users/{user_id}", {"imie": "41201234560099"})
+    assert relinked.json()["imie_masked"] == "4120*****0099"
     # OneID without a PINFL is refused; dropping OneID first makes unlinking possible.
-    assert (
-        await boss.send("PATCH", f"{ADMIN}/users/{user_id}", {"pinfl": None})
-    ).status_code == 422
+    assert (await boss.send("PATCH", f"{ADMIN}/users/{user_id}", {"imie": None})).status_code == 422
     only_password = await boss.send(
-        "PATCH", f"{ADMIN}/users/{user_id}", {"auth_methods": ["password"], "pinfl": None}
+        "PATCH", f"{ADMIN}/users/{user_id}", {"auth_methods": ["password"], "imie": None}
     )
     assert only_password.status_code == 200
-    assert only_password.json()["pinfl_masked"] is None
+    assert only_password.json()["imie_masked"] is None
 
     assert (await boss.get(f"{ADMIN}/users/{user_id}")).json()["username"] == "citizen_only"
     assert (await boss.get(f"{ADMIN}/users/{uuid.uuid4()}")).status_code == 404

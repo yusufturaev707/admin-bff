@@ -25,7 +25,9 @@ class UserOut(BaseModel):
     is_active: bool
     auth_methods: list[AuthMethod]
     must_change_password: bool
-    pinfl_masked: str | None
+    imie_masked: str | None
+    org_id: int | None
+    region_id: int | None
     roles: list[RoleRef]
     created_at: datetime
     last_login_at: datetime | None
@@ -44,6 +46,7 @@ class UserCreate(_Request):
                 "username": "operator_toshkent",
                 "full_name": "Aliyev Vali",
                 "auth_methods": ["password"],
+                "org_id": 1,
                 "role_ids": [],
             }
         }
@@ -52,17 +55,40 @@ class UserCreate(_Request):
     username: str = Field(min_length=3, max_length=64)
     full_name: str | None = Field(default=None, max_length=128)
     auth_methods: list[AuthMethod] = Field(default=[AuthMethod.PASSWORD], min_length=1)
-    pinfl: str | None = Field(default=None, pattern=r"^[0-9]{14}$")
+    imie: str | None = Field(
+        default=None,
+        pattern=r"^[0-9]{14}$",
+        description=(
+            "OneID uchun fuqaroning IMIE (PINFL) raqami, 14 ta raqam. Saqlanmaydi: "
+            "faqat HMAC va maskalangan ko'rinishi"
+        ),
+    )
+    org_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Tashkilot. region_id berilmasa, tashkilotning hududi olinadi",
+    )
+    region_id: int | None = Field(default=None, ge=1)
     role_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
 
 
 class UserUpdate(_Request):
-    """Only the fields that are sent are changed; `pinfl: null` unlinks OneID."""
+    """Only the fields that are sent are changed; `imie: null` unlinks OneID.
+    A new `org_id` without `region_id` moves the user to that organization's region."""
 
     full_name: str | None = Field(default=None, max_length=128)
     is_active: bool | None = None
     auth_methods: list[AuthMethod] | None = Field(default=None, min_length=1)
-    pinfl: str | None = Field(default=None, pattern=r"^[0-9]{14}$")
+    imie: str | None = Field(
+        default=None,
+        pattern=r"^[0-9]{14}$",
+        description=(
+            "OneID uchun fuqaroning IMIE (PINFL) raqami, 14 ta raqam. Saqlanmaydi: "
+            "faqat HMAC va maskalangan ko'rinishi"
+        ),
+    )
+    org_id: int | None = Field(default=None, ge=1)
+    region_id: int | None = Field(default=None, ge=1)
 
 
 class UserUpdated(UserOut):
@@ -135,6 +161,8 @@ class MeOut(BaseModel):
     full_name: str | None
     auth_methods: list[AuthMethod]
     must_change_password: bool
+    org_id: int | None
+    region_id: int | None
     roles: list[RoleRef]
     permissions: list[str] = Field(description="Berilgan permission'lar, wildcard bo'lishi mumkin")
 
