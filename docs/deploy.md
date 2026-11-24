@@ -4,18 +4,27 @@ Bu hujjat Admin BFF'ni Debian 12 (bookworm) serveriga birinchi marta
 o'rnatish tartibi. Keyingi yangilashlar uchun `deploy/deploy.sh` ishlatiladi
 (oxirgi bo'lim).
 
-Server boshqa tizim (proktoring) bilan umumiy. Shuning uchun:
+Ikkita server ishtirok etadi:
 
-- **Boshqa tizimning servislariga tegilmaydi.** Serverdagi `redis-server.service`,
-  PostgreSQL 15 klasteri va mavjud Nginx saytlari o'zgartirilmaydi va qayta
-  ishga tushirilmaydi. BFF o'z Redis instansini va o'z PostgreSQL 17 klasterini
-  ishlatadi.
+- **BFF serveri:** BFF, uning Redis'i va Nginx. Bu server boshqa tizim
+  (proktoring) bilan umumiy.
+- **DB serveri:** BFF'ning PostgreSQL bazasi. BFF unga tarmoq orqali TLS bilan
+  ulanadi (5-qadam). Bu serverda boshqa bazalar ham bo'lishi mumkin.
+
+Ikkala server ham umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
+
+- **Boshqa tizimlarning servislariga tegilmaydi.** BFF serveridagi
+  `redis-server.service`, PostgreSQL 15 klasteri va mavjud Nginx saytlari
+  o'zgartirilmaydi va qayta ishga tushirilmaydi. BFF o'z Redis instansini
+  ishlatadi. DB serverida faqat yangi rollar, yangi baza va `pg_hba.conf`ga
+  qatorlar qo'shiladi.
 - **Faqat aniq servislar boshqariladi.** `systemctl restart nginx`,
   `systemctl restart postgresql` va `systemctl restart redis-server` buyruqlari
-  ishlatilmaydi. Nginx faqat `nginx -t`dan keyin `reload` qilinadi, PostgreSQL'da
-  faqat `postgresql@17-main` boshqariladi.
+  ishlatilmaydi. Nginx faqat `nginx -t`dan keyin `reload` qilinadi. DB serverida
+  o'zgarishlar `pg_reload_conf()` bilan o'qiladi, PostgreSQL qayta ishga
+  tushirilmaydi.
 - **Og'ir ishlar imtihon smenasidan tashqarida qilinadi.** Bu Python'ni yig'ish
-  (1-qadam) va PGDG paketlarini o'rnatish (5-qadam).
+  (1-qadam).
 - **UFW o'zgartirilmaydi.** BFF yangi port ochmaydi: tashqaridan unga faqat
   mavjud Nginx'ning 443-porti orqali kiriladi. Proktoringning portlarini bilmasdan
   UFW'ni yoqish yoki o'zgartirish uni ishdan chiqarishi mumkin.
@@ -32,13 +41,17 @@ Server boshqa tizim (proktoring) bilan umumiy. Shuning uchun:
   bo'lsa, Nginx hammani rad etadi.
 - Adminlar kompyuterlarining `hosts` fayli:
   `<server_IP> admin.uzbmb.uz admin-api.uzbmb.uz`.
+- DB serveri:
+  - ichki IP manzili (`<DB_IP>`) va BFF serverining IP manzili (`<BFF_IP>`);
+  - unda root huquqi;
+  - PostgreSQL versiyasi 16 yoki undan yangi (lokal testlar 17'da o'tadi).
 
-Serverda tekshirib oling:
+BFF serverida tekshirib oling:
 
 ```bash
 grep -n "include" /etc/nginx/nginx.conf          # sites-enabled/* ulanganmi
 grep -rn "listen" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/
-ss -ltnp | grep -E ':(5433|8081)\b'             # bo'sh bo'lishi kerak
+ss -ltnp | grep -E ':8081\b'                   # bo'sh bo'lishi kerak
 ```
 
 Agar proktoring `listen 10.x.x.x:443 ssl;` kabi aniq IP bilan tinglasa,
@@ -123,83 +136,174 @@ ls -l /etc/admin-bff/credentials     # hammasi root root -rw-------
 `pinfl_hmac_key`ning zaxira nusxasi olinadi: u yo'qolsa, adminlarga
 biriktirilgan PINFL'lar qayta biriktiriladi (`docs/security.md`, "Kalitlar").
 
-## 5. PostgreSQL 17 (BFF'ning o'z klasteri)
+## 5. PostgreSQL (DB serverida)
 
-Debian 12'dagi PostgreSQL 15 klasteri (port 5432) proktoringniki. BFF uchun
-PGDG repo'sidan PostgreSQL 17 o'rnatiladi, u alohida klaster bo'lib 5433-portda
-ishlaydi. Lokal testlar ham PostgreSQL 17'da o'tadi.
+BFF'ning bazasi alohida DB serverida turadi. BFF unga tarmoq orqali TLS bilan
+ulanadi va sertifikatni tekshiradi (`DB_SSLMODE=verify-full`). Production
+boshqa serverdagi bazaga shifrlanmagan ulanishni rad etadi, servis ishga
+tushmaydi.
 
-PGDG repo'si `postgresql-15` paketining yangiroq build'ini ham taklif qiladi.
-Uni olsangiz, `apt upgrade` paytida proktoringning PostgreSQL'i qayta ishga
-tushadi. Shuning uchun quyidagi pin fayli PGDG'dan faqat PostgreSQL 17'ga
-kerakli paketlarni oladi.
+Boshqacha yozilmagan bo'lsa, bu qadamdagi buyruqlar **DB serverida** root
+sifatida bajariladi.
+
+### 5.1. Versiya va tarmoq
 
 ```bash
-install -d /usr/share/postgresql-common/pgdg
-curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-  https://www.postgresql.org/media/keys/ACCC4CF8.asc
-echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
-  > /etc/apt/sources.list.d/pgdg.list
-
-cat > /etc/apt/preferences.d/pgdg.pref <<'EOF'
-# PGDG'dan faqat PostgreSQL 17 va uning bog'liqliklari olinadi.
-# Proktoringning postgresql-15 paketi Debian'ning o'zidan yangilanadi.
-Package: *
-Pin: release o=apt.postgresql.org
-Pin-Priority: 100
-
-Package: postgresql-17 postgresql-client-17 postgresql-common postgresql-client-common libpq5 libpq-dev pgdg-keyring
-Pin: release o=apt.postgresql.org
-Pin-Priority: 500
-EOF
-
-apt update
-apt-cache policy postgresql-15 postgresql-17
+pg_lsclusters                                    # versiya: 16 yoki yangi
+runuser -u postgres -- psql -Atc "show listen_addresses" -c "show ssl" -c "show port"
 ```
 
-`apt-cache policy` natijasida ikkita narsa bo'lishi kerak:
+- **Versiya.** 15 yoki eski bo'lsa, davom etishdan oldin xabar bering.
+- **`listen_addresses`.** U `*` yoki DB serverining ichki IP manzili bo'lishi
+  kerak. Bu sozlama faqat PostgreSQL'ni qayta ishga tushirganda o'zgaradi, bu esa
+  shu serverdagi boshqa bazalarni ham to'xtatadi. O'zgartirish kerak bo'lsa, DB
+  serverining egasi bilan kelishiladi.
+- **Firewall.** DB serverida firewall bo'lsa, 5432-port faqat BFF serveridan
+  ochiladi: `ufw allow from <BFF_IP> to any port 5432 proto tcp`.
 
-- `postgresql-15` uchun `Candidate` Debian'niki, ya'ni `+deb12u` bilan tugaydi;
-- `postgresql-17` uchun `Candidate` `apt.postgresql.org`dan.
+### 5.2. TLS sertifikati
 
-Shunday bo'lmasa, keyingi qadamga o'tilmaydi.
+BFF ikki narsani tekshiradi:
+
+- sertifikat BFF ishonadigan CA bilan imzolangan;
+- sertifikat aynan `DB_HOST` uchun berilgan, ya'ni IP manzil yoki nom
+  sertifikatning `subjectAltName` maydonida bor.
+
+**DB serverida tashkilot CA'si imzolagan sertifikat bo'lsa,** shu CA'ning
+sertifikatini 5.5-qadamda BFF serveriga qo'ying va 5.3-qadamga o'ting.
+
+**Bo'lmasa** (masalan, Debian'ning `ssl-cert-snakeoil` sertifikati), BFF
+ulanishi uchun alohida CA va server sertifikati yaratiladi. `<DB_IP>` o'rniga
+DB serverining ichki IP manzili yoziladi:
 
 ```bash
-apt install -y postgresql-17
-pg_lsclusters                # 17 main 5433 online (15 main 5432 o'zgarmagan)
-
-# Faqat unix socket, TCP yopiq.
-pg_conftool 17 main set listen_addresses ''
-systemctl restart postgresql@17-main
+install -d -m 0700 /root/admin-bff-db-ca && cd /root/admin-bff-db-ca
+openssl req -x509 -new -nodes -newkey ec -pkeyopt ec_paramgen_curve:P-256 -days 3650 \
+  -subj "/CN=admin-bff-db-ca" \
+  -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -keyout ca.key -out ca.crt
+openssl req -new -nodes -newkey ec -pkeyopt ec_paramgen_curve:P-256 -subj "/CN=<DB_IP>" \
+  -keyout server.key -out server.csr
+printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature' \
+  'extendedKeyUsage=serverAuth' 'subjectAltName=IP:<DB_IP>' \
+  'subjectKeyIdentifier=hash' 'authorityKeyIdentifier=keyid' > server.ext
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 825 \
+  -extfile server.ext -out server.crt
+openssl verify -CAfile ca.crt server.crt         # server.crt: OK
 ```
 
-Port 5433 bo'lmasa, `admin-bff.env`dagi `DB_PORT` `pg_lsclusters`dagi port
-bilan bir xil qilinadi.
-
-Rollar va baza. Ikki rol kerak (README, "PostgreSQL rollari"). Parollar
-fayllardan olinadi, buyruq qatorida ko'rinmaydi:
+Sertifikatni PostgreSQL'ga ulash. `V`: `pg_lsclusters`dagi versiya, masalan 17:
 
 ```bash
-C=/etc/admin-bff/credentials
+V=17
+install -m 0644 -o postgres -g postgres server.crt /etc/postgresql/$V/main/server.crt
+install -m 0600 -o postgres -g postgres server.key /etc/postgresql/$V/main/server.key
+pg_conftool $V main set ssl on
+pg_conftool $V main set ssl_cert_file /etc/postgresql/$V/main/server.crt
+pg_conftool $V main set ssl_key_file /etc/postgresql/$V/main/server.key
+runuser -u postgres -- psql -Atc "select pg_reload_conf()"
+runuser -u postgres -- psql -Atc "show ssl"      # on
+```
+
+- **Sertifikat almashishi shu DB serveriga ulanadigan hamma mijozga ta'sir
+  qiladi.** `sslmode=require` yoki `prefer` bilan ulanadigan mijozlar
+  ishlashda davom etadi. Eski sertifikatni tekshiradigan mijoz
+  (`verify-ca`, `verify-full`) ulana olmay qoladi. Shuning uchun bu qadam DB
+  serverining egasi bilan kelishib bajariladi.
+- **`ca.key` maxfiy.** U faqat sertifikatni yangilash uchun kerak, uni
+  `/root/admin-bff-db-ca`da yoki undan ham xavfsiz joyda saqlang. `ca.crt`
+  esa ochiq ma'lumot, BFF serveriga shu nusxalanadi.
+- **Sertifikat 825 kun amal qiladi.** Tugash sanasi:
+  `openssl x509 -enddate -noout -in server.crt`. Muddat o'tsa, BFF bazaga
+  ulana olmaydi. Undan oldin shu buyruqlar bilan yangi `server.crt` chiqariladi
+  (`ca.key` o'sha qoladi).
+
+### 5.3. Rollar va baza
+
+Ikki rol kerak (README, "PostgreSQL rollari"). Parollar 4-qadamda BFF
+serverida yaratilgan. Ularni BFF serverida ko'rib, DB serveridagi psql'ning
+`\password` buyrug'iga kiritasiz.
+
+BFF serverida:
+
+```bash
+cat /etc/admin-bff/credentials/db_owner_password; echo
+cat /etc/admin-bff/credentials/db_password; echo
+```
+
+DB serverida:
+
+```bash
+runuser -u postgres -- psql -v ON_ERROR_STOP=1
+```
+
+```sql
+CREATE ROLE admin_bff_owner LOGIN;
+CREATE ROLE admin_bff LOGIN;
+\password admin_bff_owner
+\password admin_bff
+CREATE DATABASE admin_bff OWNER admin_bff_owner;
+-- Shu serverdagi boshqa rollar bu bazaga ulana olmasin:
+REVOKE CONNECT, TEMPORARY ON DATABASE admin_bff FROM PUBLIC;
+GRANT CONNECT ON DATABASE admin_bff TO admin_bff_owner, admin_bff;
+\q
+```
+
+`\password` parolni ekranga chiqarmaydi. U serverga faqat parolning SCRAM
+hash'ini yuboradi, shuning uchun parol PostgreSQL log'iga ham, psql tarixiga
+ham tushmaydi.
+
+### 5.4. `pg_hba.conf`
+
+Bu qatorlar fayl boshida turishi kerak, chunki PostgreSQL birinchi mos kelgan
+qatorni ishlatadi:
+
+- **1-qator** BFF rollarini faqat o'z bazasiga, faqat BFF serveridan va faqat
+  TLS bilan kiritadi.
+- **Qolgan qatorlar** bu rollarni boshqa hamma joyda rad etadi: boshqa
+  bazalarda, TLS'siz ulanishda va boshqa IP'lardan.
+
+```bash
+BFF_IP=<BFF_IP>
+F=$(runuser -u postgres -- psql -Atc "show hba_file")
+cp -p "$F" "$F.bak-admin-bff"
 {
-  printf "CREATE ROLE admin_bff_owner LOGIN PASSWORD '%s';\n" "$(cat $C/db_owner_password)"
-  printf "CREATE ROLE admin_bff LOGIN PASSWORD '%s';\n" "$(cat $C/db_password)"
-  echo "CREATE DATABASE admin_bff OWNER admin_bff_owner;"
-  echo "REVOKE CONNECT, TEMPORARY ON DATABASE admin_bff FROM PUBLIC;"
-  echo "GRANT CONNECT ON DATABASE admin_bff TO admin_bff_owner, admin_bff;"
-} | runuser -u postgres -- psql -p 5433 -v ON_ERROR_STOP=1
+  echo "# Admin BFF: faqat o'z bazasi, faqat BFF serveridan, faqat TLS bilan."
+  echo "hostssl  admin_bff  admin_bff_owner,admin_bff  $BFF_IP/32  scram-sha-256"
+  echo "host     all        admin_bff_owner,admin_bff  0.0.0.0/0   reject"
+  echo "host     all        admin_bff_owner,admin_bff  ::/0        reject"
+  echo "local    all        admin_bff_owner,admin_bff              reject"
+  echo
+  cat "$F.bak-admin-bff"
+} > "$F"
+runuser -u postgres -- psql -Atc "select pg_reload_conf()"
+runuser -u postgres -- psql -Atc "select line_number, error from pg_hba_file_rules where error is not null"
 ```
 
-`pg_hba.conf`da BFF qatori birinchi `local` qatoridan oldin turishi kerak.
-Debian'ning `local all all peer` qatori OS user nomini talab qiladi, u esa
-BFF'ga mos kelmaydi:
+Oxirgi buyruq hech narsa chiqarmasligi kerak. Agar xato chiqsa, PostgreSQL
+eski qoidalar bilan ishlashda davom etadi. Unda faylni
+`cp -p "$F.bak-admin-bff" "$F"` bilan qaytarib, xatoni tuzating.
+
+### 5.5. BFF serverida: CA sertifikati va tekshiruv
+
+5.2-qadamdagi `ca.crt` (yoki tashkilot CA'sining sertifikati) BFF serveriga
+nusxalanadi. Masalan, DB serverida `cat ca.crt` qilib, chiqishini BFF serverida
+shu faylga yozish mumkin:
 
 ```bash
-sed -i '0,/^local/s//local   admin_bff   admin_bff_owner,admin_bff   scram-sha-256\nlocal/' \
-  /etc/postgresql/17/main/pg_hba.conf
-grep -n '^local' /etc/postgresql/17/main/pg_hba.conf   # admin_bff qatori birinchi
-systemctl reload postgresql@17-main
+install -m 0644 -o root -g root /dev/null /etc/admin-bff/db-ca.crt
+nano /etc/admin-bff/db-ca.crt                    # -----BEGIN CERTIFICATE----- ... END
+openssl s_client -starttls postgres -connect <DB_IP>:5432 \
+  -CAfile /etc/admin-bff/db-ca.crt -verify_ip <DB_IP> -verify_return_error \
+  </dev/null 2>/dev/null | grep "Verify return code"
+# Verify return code: 0 (ok)
 ```
+
+`0 (ok)` chiqmasa, BFF ham ulana olmaydi. Odatda sababi shulardan biri:
+
+- noto'g'ri CA fayli;
+- sertifikatdagi IP `<DB_IP>` bilan mos emas;
+- tarmoq yoki firewall ulanishni o'tkazmayapti.
 
 ## 6. Redis (BFF'ning o'z instansi)
 
@@ -232,7 +336,9 @@ nano /etc/admin-bff/admin-bff.env
 Tekshiriladigan qiymatlar:
 
 - `FRONTEND_ORIGIN`: frontendning haqiqiy domeni;
-- `DB_PORT`: `pg_lsclusters`dagi 17-klaster porti;
+- `DB_HOST`: `<DB_IP>` (yoki sertifikatdagi nom, u BFF serverida `/etc/hosts`
+  orqali ochilishi kerak) va `DB_PORT`;
+- `DB_SSLMODE=verify-full`, `DB_SSLROOTCERT=/etc/admin-bff/db-ca.crt`;
 - `REDIS_URL`: `unix:///run/admin-bff-redis/redis.sock?db=0`.
 
 ## 8. Migratsiyalar va servis
@@ -244,6 +350,10 @@ cd /srv/admin-bff
   .venv/bin/alembic upgrade head )
 
 cp /srv/admin-bff/deploy/admin-bff.service /etc/systemd/system/
+# Servis faqat localhost bilan gaplasha oladi (IPAddressDeny=any): DB serveri
+# shu yerda qo'shiladi. Repo'dagi unit o'zgarmaydi.
+install -d /etc/systemd/system/admin-bff.service.d
+printf '[Service]\nIPAddressAllow=%s/32\n' '<DB_IP>' > /etc/systemd/system/admin-bff.service.d/db.conf
 systemctl daemon-reload
 systemctl enable --now admin-bff
 systemctl status admin-bff --no-pager
@@ -256,7 +366,10 @@ ko'rinadi. Ko'p uchraydigan sabablar:
 
 - migratsiya qilinmagan;
 - `DB_USER` audit jadvalini o'zgartira oladi (owner yoki superuser);
-- Redis paroli `credentials/redis_password` bilan bir xil emas.
+- Redis paroli `credentials/redis_password` bilan bir xil emas;
+- DB'ga ulanib bo'lmayapti. Migratsiya o'tib, servis ulana olmasa, sabab
+  `admin-bff.service.d/db.conf`dagi IP. Ikkalasi ham ulana olmasa, 5.5-qadamdagi
+  `openssl` tekshiruvi, `pg_hba.conf` va DB serveridagi firewall tekshiriladi.
 
 ## 9. Birinchi superadmin
 
@@ -326,8 +439,8 @@ systemctl reload admin-bff
 ```
 
 Yangi versiya migratsiya qo'shgan bo'lsa, eski kod yangi sxema bilan ishga
-tushmaydi. Unda `alembic downgrade`dan oldin bazaning nusxasi olinadi
-(`runuser -u postgres -- pg_dump -p 5433 -Fc admin_bff > /root/admin_bff.dump`).
+tushmaydi. Unda `alembic downgrade`dan oldin DB serverida bazaning nusxasi
+olinadi: `runuser -u postgres -- pg_dump -Fc admin_bff > /root/admin_bff.dump`.
 
 ## Hozircha yo'q
 

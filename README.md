@@ -21,8 +21,9 @@ o'rnatiladi. `requirements.txt` yo'q.
 Server: **Debian 12 (bookworm)**, boshqa tizim (proktoring) bilan umumiy.
 Serverga o'rnatish tartibi: [`docs/deploy.md`](docs/deploy.md). Qisqacha:
 
-- PostgreSQL: Debian'ning o'zida 15-versiya, u boshqa tizimniki. BFF uchun
-  alohida PostgreSQL 17 klasteri (PGDG repo'si, port 5433) ishlatiladi.
+- PostgreSQL: alohida DB serverida (16+), ulanish TLS bilan va sertifikat
+  tekshiriladi (`DB_SSLMODE=verify-full`). BFF serveridagi PostgreSQL 15
+  boshqa tizimniki, unga tegilmaydi.
 - Redis: Debian'niki 7.0, mos keladi. BFF o'z instansini ishlatadi
   (`deploy/admin-bff-redis.service`), boshqa tizimning Redis'iga tegmaydi.
 - nginx 1.22: `http2 on;` yo'q (u 1.25.1'dan beri), HTTP/2 yoqilmagan
@@ -145,6 +146,8 @@ mavjud bo'lsa) `.env` umuman o'qilmaydi.
 | `FRONTEND_ORIGIN` | yo'q | CORS va CSRF uchun yagona ruxsat etilgan origin |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | `127.0.0.1`, `5432`, `admin_bff`, `admin_bff` | `DB_HOST` unix socket papkasi ham bo'lishi mumkin. `DB_USER` servisning roli |
 | `DB_OWNER_USER` | yo'q | sxema egasi, faqat migratsiyalar uchun. Yo'q bo'lsa, `DB_USER` |
+| `DB_SSLMODE` | `disable` | `verify-full` (sertifikat zanjiri va `DB_HOST` nomi) yoki `verify-ca` (faqat zanjir). Tekshiruvsiz TLS rejimi yo'q. Production boshqa hostdagi bazaga `disable` bilan ishga tushmaydi |
+| `DB_SSLROOTCERT` | yo'q | DB sertifikatini imzolagan CA fayli. Yo'q bo'lsa, tizimning CA'lari |
 | `AUDIT_RETENTION_DAYS` | `90` | audit log saqlash muddati, kamida 90 |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | parol URL'da bo'lmasin |
 | `REDIS_KEY_PREFIX` | bo'sh | umumiy dev Redis'da kalitlar aralashmasligi uchun |
@@ -233,7 +236,8 @@ REVOKE CONNECT, TEMPORARY ON DATABASE admin_bff FROM PUBLIC;
 GRANT CONNECT ON DATABASE admin_bff TO admin_bff_owner, admin_bff;
 ```
 
-`pg_hba.conf`: `local admin_bff admin_bff_owner,admin_bff scram-sha-256`.
+`pg_hba.conf` qatorlari [`docs/deploy.md`](docs/deploy.md)ning 5.4-qadamida:
+BFF rollari faqat o'z bazasiga, faqat BFF serveridan va faqat TLS bilan kiradi.
 
 `alembic upgrade head` har safar `admin_bff` roliga huquqlarni qaytadan beradi
 (`app/core/db_privileges.py`). Yangi jadval avtomatik to'liq huquq oladi,

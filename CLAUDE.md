@@ -34,6 +34,7 @@ Ish qoidalari:
 - Shubha tug'ilsa, xavfsizroq variantni tanla va sababini izohda yoz.
 - **Egasining qarori (2026-11-23): `app/cli.py` va CI olib tashlandi** (GitHub Actions, GitLab CI, `scripts/ci.sh`, `scripts/check_coverage.py`, audit retention systemd timer'i). Hujjatda tilga olingan `app.cli` buyruqlari (`verify-audit`, `audit-retention`, `rotate-keys`) va "CI tekshiruvlari" hozircha amalda yo'q. Ularni qayta qo'shishdan oldin egasidan so'ra. Audit retention egasining qarori bilan kerak emas. Egasining so'roviga ko'ra `create-superadmin` o'rniga alohida skript bor: `uv run python -m scripts.create_superadmin --username <login>` (6-bo'lim). `sync-permissions` o'rniga `permissions` jadvalini ilova ishga tushishda o'zi registry bilan tenglashtiradi (`app/rbac/catalogue.py`); `role_permissions`ga u tegmaydi. Tekshiruvlar qo'lda ishga tushiriladi. OpenAPI snapshot'i `UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest tests/api/test_openapi.py` bilan yangilanadi. GitHub'da faqat `master` branch bor.
 - **Struktura (2026-11-23):** hamma HTTP endpoint'lar `app/api/v1/`da (`auth.py` ham), `app/auth`, `app/rbac`, `app/audit`da faqat mantiq. Bo'sh `app/connectors`, `app/events`, `app/service_auth` olib tashlandi: ular tegishli bosqich (4, 5, 8) boshlanganda 4-bo'limdagi sxema bo'yicha yaratiladi. Testlar `app/` va `scripts/` strukturasini takrorlaydi: `tests/auth/`, `tests/rbac/`, `tests/audit/`, `tests/core/`, `tests/api/`, `tests/scripts/`; yordamchilar `tests/helpers/`da, umumiy fixture'lar `tests/conftest.py`da. Yangi modul testlari shu tartibda qo'shiladi (masalan, `tests/connectors/`).
+- **Deploy (2026-11-24, egasining qarori):** BFF Debian 12 serverida ishlaydi. Server (`proktoringAPI`) proktoring bilan umumiy, kod `/srv/admin-bff`da. Sessiya Redis'i shu serverda, lekin alohida instans (`deploy/admin-bff-redis.service`): proktoringning Redis'i, PostgreSQL'i va Nginx saytlariga tegilmaydi. **PostgreSQL boshqa serverda** (3-bo'limdagi 9-qaror va 11-bo'lim shu qismda o'zgardi). Ulanish TLS bilan (`DB_SSLMODE=verify-full`, `DB_SSLROOTCERT`); production boshqa hostdagi bazaga shifrlanmagan ulanishni rad etadi (`app/settings.py`). DB serverining IP'si systemd `IPAddressAllow`ga drop-in orqali qo'shiladi. To'liq tartib: `docs/deploy.md`.
 
 ## 2. Mavjud tizimlar konteksti
 
@@ -68,7 +69,7 @@ Quyidagi to'qqizta qaror qat'iy. Ularni faqat egasi bilan kelishib o'zgartirish 
 6. **BFF'dan tizimga har bir so'rov imzolangan JWT bilan boradi.** Token 60 soniya amal qiladi va EdDSA bilan imzolanadi (8-bo'lim). Statik API key ishlatilmaydi.
 7. **Vaqt.** Barcha vaqtlar UTC'da, timezone-aware ko'rinishda saqlanadi.
 8. **Hammasi o'z serverlarimizda.** Tashqi bulut xizmatlari, CDN va SaaS ishlatilmaydi. Yagona istisno: davlat identifikatsiya xizmati OneID (6-bo'lim), u faqat kirishda ishlatiladi.
-9. **Docker ishlatilmaydi.** BFF systemd servisi sifatida Gunicorn bilan ishlaydi (11-bo'lim). PostgreSQL va Redis host'ning o'zida o'rnatilgan bo'ladi.
+9. **Docker ishlatilmaydi.** BFF systemd servisi sifatida Gunicorn bilan ishlaydi (11-bo'lim). PostgreSQL va Redis host'ning o'zida o'rnatilgan bo'ladi. **Egasining qarori (2026-11-24): PostgreSQL alohida serverda, ulanish TLS bilan (1-bo'lim, "Deploy").**
 
 | Vazifa | Texnologiya |
 | --- | --- |
@@ -567,8 +568,10 @@ Bitta tizim ishlamay qolsa ham adminka ishlashda davom etadi. Tashqariga faqat N
   - ilova ularni `$CREDENTIALS_DIRECTORY`'dan o'qiydi (pydantic-settings `secrets_dir`);
   - manba fayllar `/etc/admin-bff/credentials/`'da, `root:root 0600` huquqi bilan saqlanadi;
   - `.env` faqat development uchun, repo'da faqat `.env.example` turadi.
-- **PostgreSQL va Redis host'ning o'zida:**
-  - ular faqat `127.0.0.1` yoki unix socket'da tinglaydi;
+- **PostgreSQL alohida serverda, Redis host'ning o'zida** (egasining qarori, 2026-11-24):
+  - PostgreSQL'ga ulanish TLS bilan, sertifikat tekshiriladi (`DB_SSLMODE=verify-full`);
+  - `pg_hba.conf`da BFF rollari faqat o'z bazasiga, faqat BFF serveridan va faqat `hostssl` bilan kiradi;
+  - Redis faqat unix socket'da tinglaydi;
   - PostgreSQL `scram-sha-256` bilan, BFF uchun alohida DB va user;
   - sessiya Redis'ida `requirepass`, voqealar Redis'ida ACL (10.1-bo'lim, `deploy/redis-events.conf`).
 - **UFW.** Tashqariga faqat 80, 443 va SSH ochiq, SSH faqat ma'lum IP'lardan. Tizimlarning ichki API portlari tashqariga ochilmaydi.

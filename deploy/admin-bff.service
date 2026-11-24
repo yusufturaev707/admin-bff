@@ -26,8 +26,9 @@
 Description=UZBMB Admin BFF
 Documentation=file:///srv/admin-bff/README.md
 # Sessiya Redis'i alohida instans (admin-bff-redis.service), serverdagi
-# boshqa tizimlarning redis-server.service'i emas.
-After=network-online.target postgresql.service admin-bff-redis.service
+# boshqa tizimlarning redis-server.service'i emas. PostgreSQL boshqa
+# serverda (docs/deploy.md), shuning uchun network-online.target kerak.
+After=network-online.target admin-bff-redis.service
 Wants=network-online.target admin-bff-redis.service
 
 [Service]
@@ -101,8 +102,12 @@ SystemCallFilter=@chown
 # (xato log'da ko'rinadi).
 SystemCallErrorNumber=EPERM
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-# Hozir barcha tizimlar shu serverda (8-bo'lim): BFF faqat localhost bilan
-# gaplashadi. Tizimlar boshqa serverlarga ko'chsa, ularning IP'lari qo'shiladi.
+# BFF faqat localhost va DB serveri bilan gaplashadi. DB serverining IP'si
+# repo'da emas, serverdagi drop-in faylda qo'shiladi (docs/deploy.md):
+#   /etc/systemd/system/admin-bff.service.d/db.conf
+#     [Service]
+#     IPAddressAllow=<DB_IP>/32
+# Tizimlar boshqa serverlarga ko'chsa, ularning IP'lari ham shunday qo'shiladi.
 # TODO(owner): OneID yoqilganda uning token/userinfo serverlari IP'lari
 # IPAddressAllow'ga qo'shiladi (BFF code'ni server tomonda almashtiradi).
 IPAddressDeny=any
