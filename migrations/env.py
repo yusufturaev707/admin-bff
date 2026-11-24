@@ -11,6 +11,7 @@ role's privileges are (re)granted after every upgrade, in the same transaction
 
 import asyncio
 from logging.config import fileConfig
+from typing import Any
 
 from alembic import context
 from sqlalchemy.engine import URL, Connection
@@ -20,7 +21,7 @@ import app.audit.models
 import app.auth.models
 import app.rbac.models  # noqa: F401  (all register their tables on Base.metadata)
 from app.audit.models import include_name
-from app.core.db import Base, owner_database_url
+from app.core.db import Base, owner_database_url, ssl_connect_args
 from app.core.db_privileges import grant_app_privileges
 from app.settings import load_settings
 
@@ -31,21 +32,22 @@ if config.config_file_name is not None and not config.attributes.get("skip_loggi
 target_metadata = Base.metadata
 
 
-def _url_and_app_role() -> tuple[URL, str | None]:
+def _target() -> tuple[URL, str | None, dict[str, Any]]:
+    """The URL, the application role and asyncpg connect_args (TLS)."""
     # Tests pass the URL of their temporary database (and optionally the
     # application role) programmatically.
     url = config.attributes.get("database_url")
     if isinstance(url, URL):
         role = config.attributes.get("app_role")
-        return url, role if isinstance(role, str) else None
+        return url, role if isinstance(role, str) else None, {}
     settings = load_settings()
     owner = settings.db_owner_user
     app_role = settings.db_user if owner is not None and owner != settings.db_user else None
-    return owner_database_url(settings), app_role
+    return owner_database_url(settings), app_role, ssl_connect_args(settings)
 
 
 def run_migrations_offline() -> None:
-    url, _ = _url_and_app_role()
+    url, _, _ = _target()
     context.configure(
         url=url.render_as_string(hide_password=True),
         target_metadata=target_metadata,
@@ -71,8 +73,8 @@ def _run_sync(connection: Connection, app_role: str | None) -> None:
 
 
 async def run_migrations_online() -> None:
-    url, app_role = _url_and_app_role()
-    engine = create_async_engine(url)
+    url, app_role, connect_args = _target()
+    engine = create_async_engine(url, connect_args=connect_args)
     async with engine.connect() as connection:
         await connection.run_sync(_run_sync, app_role)
     await engine.dispose()

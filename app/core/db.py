@@ -4,6 +4,7 @@ Only the BFF's own database. Databases of other systems are never connected
 to (architecture decision 3): they are reached through their internal admin API.
 """
 
+import ssl
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -61,6 +62,29 @@ def owner_database_url(settings: Settings) -> URL:
     )
 
 
+def db_ssl_context(settings: Settings) -> ssl.SSLContext | None:
+    """TLS for the connection to PostgreSQL (DB_SSLMODE), None for disable.
+
+    Both modes require a certificate signed by DB_SSLROOTCERT (or a system
+    CA); verify-full also requires it to be issued for DB_HOST (a DNS name or
+    an IP address in subjectAltName). The server refusing TLS is an error,
+    never a silent fallback to plain text."""
+    if settings.db_sslmode == "disable":
+        return None
+    context = ssl.create_default_context(cafile=settings.db_sslrootcert)
+    context.check_hostname = settings.db_sslmode == "verify-full"
+    return context
+
+
+def ssl_connect_args(settings: Settings) -> dict[str, Any]:
+    """asyncpg `connect_args` for TLS; shared by the app and the migrations.
+
+    `disable` passes `ssl=False`: without it asyncpg would "prefer" TLS and
+    accept any certificate, which looks encrypted but is not verified."""
+    context = db_ssl_context(settings)
+    return {"ssl": False if context is None else context}
+
+
 def create_engine(settings: Settings) -> AsyncEngine:
     return create_async_engine(
         database_url(settings),
@@ -72,6 +96,7 @@ def create_engine(settings: Settings) -> AsyncEngine:
             "timeout": 5,
             # Every session works in UTC regardless of the server's timezone.
             "server_settings": {"application_name": "admin-bff", "timezone": "UTC"},
+            **ssl_connect_args(settings),
         },
     )
 
