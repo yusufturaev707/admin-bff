@@ -184,6 +184,7 @@ Fayllar `deploy/` papkasida:
 | `nginx/admin-api.conf` | API server bloki: TLS, HSTS, rate limit, SSE, `/internal/` yopiq |
 | `nginx/admin-frontend.conf` | frontend server bloki |
 | `nginx/admin-bff-internal.conf` | faqat `127.0.0.1`: JWKS va `/metrics` |
+| `nginx/admin-bff-docs.conf` | domensiz API hujjatlari frontendchi uchun: `http://<server_IP>:8090/`, faqat o'qish (`openapi/index.html`) |
 | `nginx/admin-allowlist.conf` | IP allowlist (sukut bo'yicha hammasi yopiq) |
 | `admin-bff.sh` | serverdagi qisqa buyruq `admin-bff`: `update`, `migrate`, `superadmin <login>`, `status` |
 | `deploy.sh` | `git pull`, `uv sync --frozen`, `alembic upgrade head`, `systemctl reload` (`admin-bff update`) |
