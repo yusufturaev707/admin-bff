@@ -9,7 +9,7 @@ import pytest
 
 NGINX = Path(__file__).resolve().parents[2] / "deploy" / "nginx"
 SITES = {
-    "admin-api.conf": ("admin-api.uzbmb.uz", "/etc/nginx/tls/admin-api"),
+    "admin-api.conf": ("kpi.uzbmb.uz", "/etc/nginx/tls/admin-api"),
     "admin-frontend.conf": ("admin.uzbmb.uz", "/etc/nginx/tls/admin-frontend"),
 }
 
@@ -56,3 +56,10 @@ def test_the_api_keeps_internal_paths_closed_with_json_errors() -> None:
         assert f"error_page {code} = @{name};" in conf
     # The denial page itself must pass the allowlist, or nginx answers in HTML.
     assert re.search(r"location @forbidden \{\s+allow all;", conf)
+
+
+def test_the_frontend_may_reach_the_api_domain() -> None:
+    api_domain = SITES["admin-api.conf"][0]
+    csp = re.search(r'Content-Security-Policy "([^"]+)"', _conf("admin-frontend.conf"))
+    assert csp is not None
+    assert f"connect-src 'self' https://{api_domain};" in csp.group(1)

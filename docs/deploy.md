@@ -42,14 +42,13 @@ BFF serveri umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
 
 ## 0. Oldindan kerak bo'ladigan ma'lumotlar
 
-- Domenlar. Configlarda namuna sifatida `admin.uzbmb.uz` va `admin-api.uzbmb.uz`
-  turibdi (10-bo'lim).
-- Shu domenlar uchun TLS sertifikati va kaliti. Serverda boshqa loyihaning
-  `*.uzbmb.uz` wildcard sertifikati bo'lsa, o'shani ishlatish mumkin.
+- Domenlar. API: `kpi.uzbmb.uz`. Frontend domeni hali yo'q, u ham
+  `*.uzbmb.uz` ostida bo'ladi (10-bo'lim).
+- TLS sertifikati: serverdagi `*.uzbmb.uz` wildcard sertifikati.
 - IP allowlist: adminlar kompyuterlarining IP diapazonlari. Ro'yxat bo'sh
   bo'lsa, Nginx hammani rad etadi.
-- Adminlar kompyuterlarining `hosts` fayli:
-  `<server_IP> admin.uzbmb.uz admin-api.uzbmb.uz`.
+- `kpi.uzbmb.uz` server IP'siga ochilishi: ichki DNS yoki adminlar
+  kompyuterlarining `hosts` fayli (`<server_IP> kpi.uzbmb.uz`).
 - DB'ga ulanish ma'lumotlari: host (`<DB_IP>`), port, baza nomi, user va
   parol (5-qadam).
 
@@ -339,26 +338,35 @@ Parol ikki marta so'raladi. Superadmin birinchi kirishda parolini almashtiradi.
 
 ## 10. Nginx
 
-Boshqa loyihalarning saytlari o'zgarmaydi, BFF uchun ikkita yangi sayt
-qo'shiladi: API (`admin-api.conf`) va frontend (`admin-frontend.conf`). Ikkalasi
-faqat o'z domeni bilan kelgan so'rovlarga javob beradi, shuning uchun
-serverdagi boshqa saytlarga ta'sir qilmaydi.
+Boshqa loyihalarning saytlari o'zgarmaydi. BFF uchun yangi saytlar
+qo'shiladi va ular faqat o'z domeni bilan kelgan so'rovlarga javob beradi:
 
-**Kerak bo'ladi:**
+- **API:** `https://kpi.uzbmb.uz` (`admin-api.conf`). Hozir ulanadi.
+- **Frontend** (`admin-frontend.conf`): domeni hali yo'q, domen va build
+  tayyor bo'lganda ulanadi (pastda).
 
-- API va frontend domenlari, ikkalasi bitta asosiy domen ostida (masalan,
-  `admin-api.uzbmb.uz` va `admin.uzbmb.uz`): sessiya cookie'si `SameSite=Strict`.
-- Domenlar server IP'siga ochilishi: ichki DNS yoki adminlar kompyuterlaridagi
-  `hosts` fayli (`<server_IP> admin-api.uzbmb.uz admin.uzbmb.uz`).
-- Sertifikat: shu domenlar uchun yoki serverdagi `*.uzbmb.uz` sertifikati.
-  Bori shu buyruq bilan topiladi:
+Sertifikat serverdagi `*.uzbmb.uz` wildcard sertifikati. Frontend domeni ham
+`*.uzbmb.uz` ostida bo'ladi: sessiya cookie'si `SameSite=Strict`, frontend va
+API bitta asosiy domen ostida bo'lishi shart.
 
-  ```bash
-  grep -rh "ssl_certificate " /etc/nginx/sites-enabled/ | sort -u
-  openssl x509 -noout -subject -ext subjectAltName -enddate -in <fayl>   # DNS:*.uzbmb.uz bormi
-  ```
+**1. Tekshiruvlar** (hech narsani o'zgartirmaydi):
 
-**1. Ruxsat ro'yxati.** Adminlar va frontendchining IP'lari, server
+```bash
+grep -rln "kpi.uzbmb.uz" /etc/nginx/ 2>/dev/null   # bo'sh bo'lishi kerak: bu nom boshqa saytda yo'q
+getent hosts kpi.uzbmb.uz                          # DNS bo'lsa, server IP'si chiqadi
+grep -rh -e "ssl_certificate " -e "ssl_certificate_key" /etc/nginx/sites-enabled/ | sort -u
+```
+
+- Birinchi buyruq biror fayl ko'rsatsa, `kpi.uzbmb.uz` boshqa saytda
+  ishlatilyapti. nginx ikkinchisini e'tiborsiz qoldiradi, davom etishdan
+  oldin xabar bering.
+- `getent` hech narsa chiqarmasa, DNS'da yozuv yo'q: adminlar kompyuterlariga
+  `hosts` qatori yoziladi (`<server_IP> kpi.uzbmb.uz`). Server tomonidagi
+  tekshiruv baribir ishlaydi (5-band).
+- Oxirgi buyruq wildcard sertifikat va uning kaliti fayllarini ko'rsatadi
+  (`ssl_certificate` va `ssl_certificate_key`).
+
+**2. Ruxsat ro'yxati.** Adminlar va frontendchining IP'lari, server
 tekshiruvlari uchun `127.0.0.1`:
 
 ```bash
@@ -366,46 +374,30 @@ cp -n /srv/admin-bff/deploy/nginx/admin-allowlist.conf /etc/nginx/snippets/
 nano /etc/nginx/snippets/admin-allowlist.conf    # "deny all;"dan oldin: allow 127.0.0.1; allow <IP/diapazon>; ...
 ```
 
-**2. Sertifikat.** Har bir sayt o'z papkasidan oladi, papka nomida domen yo'q:
+**3. Sertifikat.** Wildcard sertifikatga symlink: u yangilansa, BFF ham
+yangisini oladi.
 
 ```bash
-install -d -m 0750 /etc/nginx/tls/admin-api /etc/nginx/tls/admin-frontend
-# *.uzbmb.uz bo'lsa, ikkala papkaga shunga symlink:
-for d in admin-api admin-frontend; do
-  ln -s <wildcard_fullchain> /etc/nginx/tls/$d/fullchain.pem
-  ln -s <wildcard_privkey>   /etc/nginx/tls/$d/privkey.pem
-done
-# Aks holda har bir domenning o'z fullchain.pem va privkey.pem fayllari
-# (privkey.pem: chmod 600).
+install -d -m 0750 /etc/nginx/tls/admin-api
+ln -s <ssl_certificate_fayli>     /etc/nginx/tls/admin-api/fullchain.pem
+ln -s <ssl_certificate_key_fayli> /etc/nginx/tls/admin-api/privkey.pem
 ```
 
-**3. Domen nomlari.** Fayllar nusxalanadi va `# DOMEN` bilan belgilangan
-qatorlarga domen yoziladi. Domenlar `admin-api.uzbmb.uz` va `admin.uzbmb.uz`
-bo'lsa, hech narsa o'zgarmaydi:
-
-```bash
-cp /srv/admin-bff/deploy/nginx/admin-api.conf /srv/admin-bff/deploy/nginx/admin-frontend.conf \
-   /srv/admin-bff/deploy/nginx/admin-bff-internal.conf /etc/nginx/sites-available/
-nano /etc/nginx/sites-available/admin-api.conf        # 2 ta server_name: API domeni
-nano /etc/nginx/sites-available/admin-frontend.conf   # 2 ta server_name: frontend domeni, CSP'da API domeni
-nano /etc/admin-bff/admin-bff.env                     # FRONTEND_ORIGIN=https://<frontend domeni>
-systemctl restart admin-bff
-install -d -m 0755 /var/www/admin-frontend            # frontend build'i shu yerga
-```
-
-**4. Ulash.** nginx `sites-enabled`dagi fayllarni alifbo tartibida o'qiydi.
-`default_server` yozilmagan bo'lsa, ip:port'dagi birinchi sayt IP orqali yoki
-noma'lum nom bilan kelgan so'rovlarni oladi. `admin-*` alifboda boshqa
-saytlardan (`api-iiv...`, `exam...`) oldin keladi, shuning uchun nomlar `zz-`
-bilan boshlanadi:
+**4. Ulash.** `admin-api.conf`da domen allaqachon `kpi.uzbmb.uz`. nginx
+`sites-enabled`dagi fayllarni alifbo tartibida o'qiydi. `default_server`
+yozilmagan bo'lsa, ip:port'dagi birinchi sayt IP orqali yoki noma'lum nom
+bilan kelgan so'rovlarni oladi. `admin-*` alifboda boshqa saytlardan
+(`api-iiv...`, `exam...`) oldin keladi, shuning uchun nomlar `zz-` bilan
+boshlanadi:
 
 ```bash
 # Hozirgi holat (yozib qo'ying):
 curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
 curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
 
+cp /srv/admin-bff/deploy/nginx/admin-api.conf /srv/admin-bff/deploy/nginx/admin-bff-internal.conf \
+   /etc/nginx/sites-available/
 ln -s /etc/nginx/sites-available/admin-api.conf /etc/nginx/sites-enabled/zz-admin-api.conf
-ln -s /etc/nginx/sites-available/admin-frontend.conf /etc/nginx/sites-enabled/zz-admin-frontend.conf
 ln -s /etc/nginx/sites-available/admin-bff-internal.conf /etc/nginx/sites-enabled/zz-admin-bff-internal.conf
 nginx -t && systemctl reload nginx
 
@@ -414,14 +406,13 @@ curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
 curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
 ```
 
-**5. Tekshirish.** DNS hali sozlanmagan bo'lsa ham, `--resolve` domenni shu
-serverga yo'naltiradi. Sertifikat ham shu bilan tekshiriladi, shuning uchun
-`-k` yo'q:
+**5. Tekshirish.** `--resolve` domenni shu serverga yo'naltiradi, shuning uchun
+DNS bo'lmasa ham ishlaydi. Sertifikat ham tekshiriladi, `-k` yo'q:
 
 ```bash
-curl -s --resolve admin-api.uzbmb.uz:443:127.0.0.1 https://admin-api.uzbmb.uz/health   # {"status":"ok"}
-curl -s --resolve admin-api.uzbmb.uz:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://admin-api.uzbmb.uz/metrics   # 404
-curl -s --resolve admin-api.uzbmb.uz:80:127.0.0.1 -o /dev/null -w '%{http_code} %{redirect_url}\n' http://admin-api.uzbmb.uz/   # 301 https://...
+curl -s --resolve kpi.uzbmb.uz:443:127.0.0.1 https://kpi.uzbmb.uz/health        # {"status":"ok"}
+curl -s --resolve kpi.uzbmb.uz:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://kpi.uzbmb.uz/metrics   # 404
+curl -s --resolve kpi.uzbmb.uz:80:127.0.0.1  -o /dev/null -w '%{http_code} %{redirect_url}\n' http://kpi.uzbmb.uz/   # 301 https://kpi.uzbmb.uz/
 ```
 
 - **Boshqa saytlar uchun natija o'zgargan bo'lsa** (masalan, `403` chiqsa),
@@ -429,12 +420,30 @@ curl -s --resolve admin-api.uzbmb.uz:80:127.0.0.1 -o /dev/null -w '%{http_code} 
   `rm /etc/nginx/sites-enabled/zz-admin-*.conf && nginx -t && systemctl reload nginx`.
 - **`nginx -t` xato bersa**, `reload` qilinmaydi va boshqa saytlar eski
   config bilan ishlashda davom etadi.
-- **`curl: (60) SSL certificate problem`** chiqsa, sertifikat shu domen uchun
-  emas yoki zanjir (`fullchain.pem`) to'liq emas.
+- **`curl: (60) SSL certificate problem`** chiqsa, symlink noto'g'ri faylga
+  ko'rsatyapti yoki `fullchain.pem`da oraliq sertifikat yo'q.
 - **Ruxsat ro'yxatida yo'q IP** JSON'da `403 forbidden` oladi. 80-port faqat
   HTTPS'ga yo'naltiradi, ruxsat 443'da tekshiriladi.
-- Frontend build'i tayyor bo'lmaguncha `https://<frontend domeni>` 403 yoki
-  404 qaytaradi, bu kutilgan holat.
+- `https://kpi.uzbmb.uz/api/v1/docs` production'da faqat `admin:api:docs`
+  ruxsati bor sessiya bilan ochiladi. Frontend bo'lmaguncha hujjatlar
+  8090-portda o'qiladi ("API hujjatlari frontendchi uchun").
+
+### Frontend (domen berilganda)
+
+Frontend domeni `*.uzbmb.uz` ostida bo'ladi. U berilganda:
+
+```bash
+install -d -m 0750 /etc/nginx/tls/admin-frontend
+ln -s <ssl_certificate_fayli>     /etc/nginx/tls/admin-frontend/fullchain.pem
+ln -s <ssl_certificate_key_fayli> /etc/nginx/tls/admin-frontend/privkey.pem
+cp /srv/admin-bff/deploy/nginx/admin-frontend.conf /etc/nginx/sites-available/
+nano /etc/nginx/sites-available/admin-frontend.conf   # 2 ta server_name (# DOMEN): frontend domeni
+nano /etc/admin-bff/admin-bff.env                     # FRONTEND_ORIGIN=https://<frontend domeni>
+systemctl restart admin-bff
+install -d -m 0755 /var/www/admin-frontend            # build shu yerga
+ln -s /etc/nginx/sites-available/admin-frontend.conf /etc/nginx/sites-enabled/zz-admin-frontend.conf
+nginx -t && systemctl reload nginx
+```
 
 ## 11. Tekshirish
 
@@ -445,8 +454,8 @@ journalctl -u admin-bff -f                       # loglar (JSON)
 
 Allowlist'dagi admin kompyuteridan tekshiriladi:
 
-- `https://admin-api.<domen>/health` 200 qaytaradi;
-- `https://admin-api.<domen>/metrics` 404 qaytaradi;
+- `https://kpi.uzbmb.uz/health` 200 qaytaradi;
+- `https://kpi.uzbmb.uz/metrics` 404 qaytaradi;
 - frontend orqali superadmin kiradi va parolini almashtiradi.
 
 ## 12. Keyingi yangilashlar

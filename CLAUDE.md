@@ -452,7 +452,7 @@ Xato kodlari: `not_authenticated`, `session_expired`, `forbidden`, `csrf_failed`
 - Uzoq davom etadigan amallar (bulk, eksport) `202 Accepted` va `job_id` qaytaradi. Holat `GET /api/v1/jobs/{id}` orqali olinadi. Amalni tizimning o'zi bajaradi.
 - Real-time oqim va desktop clientlar endpoint'lari 10.1-bo'limda.
 
-**Domen.** Adminka frontendi va API alohida domenlarda turadi, masalan `admin.uzbmb.uz` va `admin-api.uzbmb.uz` (aniq nomlar keyin beriladi). Ikkalasi bitta asosiy domen ostida bo'lishi shart. Shunda ular same-site hisoblanadi va `SameSite=Strict` cookie ishlaydi.
+**Domen.** Adminka frontendi va API alohida domenlarda turadi, masalan `admin.uzbmb.uz` va `admin-api.uzbmb.uz` (aniq nomlar keyin beriladi). **Egasining qarori (2026-11-24): API domeni `kpi.uzbmb.uz`, sertifikat serverdagi `*.uzbmb.uz` wildcard. Frontend domeni hali yo'q, u ham `*.uzbmb.uz` ostida bo'ladi.** Ikkalasi bitta asosiy domen ostida bo'lishi shart. Shunda ular same-site hisoblanadi va `SameSite=Strict` cookie ishlaydi.
 
 - CORS faqat frontend origin'i uchun `allow_credentials=True` bilan ochiladi. `*` hech qachon ishlatilmaydi.
 - Frontend barcha so'rovlarni `credentials: 'include'` bilan yuboradi. SSE uchun `new EventSource(url, { withCredentials: true })` ishlatiladi.
