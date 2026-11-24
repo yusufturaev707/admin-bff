@@ -570,7 +570,7 @@ Bitta tizim ishlamay qolsa ham adminka ishlashda davom etadi. Tashqariga faqat N
   - `.env` faqat development uchun, repo'da faqat `.env.example` turadi.
 - **PostgreSQL alohida serverda, Redis host'ning o'zida** (egasining qarori, 2026-11-24):
   - BFF bazaga host, port, baza nomi, user va parol bilan ulanadi. DB serverida TLS bo'lsa, ulanish shifrlanadi, sertifikat tekshirilmaydi (`DB_SSLMODE=prefer`);
-  - bitta DB user, `pg_hba.conf`da u faqat o'z bazasiga va faqat BFF serveridan kiradi (DB administratori sozlaydi);
+  - bitta DB user, DB serverida BFF uchun alohida sozlash qilinmaydi;
   - Redis faqat unix socket'da tinglaydi;
   - PostgreSQL `scram-sha-256` bilan, BFF uchun alohida DB va user;
   - sessiya Redis'ida `requirepass`, voqealar Redis'ida ACL (10.1-bo'lim, `deploy/redis-events.conf`).

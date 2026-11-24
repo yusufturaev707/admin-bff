@@ -224,8 +224,8 @@ bilan birga qo'shiladi (5-bosqich).
 ### PostgreSQL user'i
 
 Production'da bitta DB user bor (egasining qarori, 2026-11-24): migratsiyalar
-ham, servis ham uning nomidan ishlaydi. Unga DB administratori bergan bo'sh
-baza kerak, user shu bazaning egasi bo'ladi (`docs/deploy.md`, 5-qadam).
+ham, servis ham uning nomidan ishlaydi (`docs/deploy.md`, 5-qadam). Jadvallarni
+migratsiyalar yaratadi.
 
 Bunda audit jadvallarini trigger'lar va hash zanjiri himoya qiladi, DB
 huquqlari esa himoya qilmaydi: jadval egasi trigger'ni o'chira oladi

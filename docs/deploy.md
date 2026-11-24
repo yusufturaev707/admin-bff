@@ -14,8 +14,7 @@ Ikkita server ishtirok etadi:
 - **BFF serveri:** BFF, uning Redis'i va Nginx. Bu serverda boshqa loyihalar
   ham ishlaydi.
 - **DB serveri:** BFF'ning PostgreSQL bazasi. BFF unga tarmoq orqali ulanadi
-  (5-qadam). Bu server DB administratoriniki, deploy paytida unda hech narsa
-  o'zgartirilmaydi.
+  (5-qadam), DB serverida hech narsa o'zgartirilmaydi.
 
 BFF serveri umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
 
@@ -52,8 +51,7 @@ BFF serveri umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
 - Adminlar kompyuterlarining `hosts` fayli:
   `<server_IP> admin.uzbmb.uz admin-api.uzbmb.uz`.
 - DB'ga ulanish ma'lumotlari: host (`<DB_IP>`), port, baza nomi, user va
-  parol. Ularni DB administratori beradi (5-qadam). Unga BFF serverining IP
-  manzili (`<BFF_IP>`) aytiladi.
+  parol (5-qadam).
 
 BFF serverida tekshirib oling. Bu buyruqlar hech narsani o'zgartirmaydi:
 
@@ -195,54 +193,19 @@ biriktirilgan PINFL'lar qayta biriktiriladi (`docs/security.md`, "Kalitlar").
 
 ## 5. PostgreSQL (DB serveri)
 
-BFF'ning bazasi alohida DB serverida turadi. BFF unga beshta qiymat bilan
-ulanadi: host, port, baza nomi, user va parol. Boshqa sozlama kerak emas
-(egasining qarori, 2026-11-24):
-
-- **TLS.** DB serverida TLS yoqilgan bo'lsa, ulanish shifrlanadi, lekin
-  sertifikat tekshirilmaydi. TLS yoqilmagan bo'lsa, BFF shifrlanmagan holda
-  ulanadi. Bu trafikni tinglashdan himoya qiladi, soxta DB serveridan (MITM)
-  esa himoya qilmaydi. Ulanish shifrlanganmi yoki yo'qmi, servis ishga
-  tushganda log'ga yozadi (8-qadam).
-- **Bitta user.** Migratsiyalar ham, servis ham shu user nomidan ishlaydi va
-  jadvallarning egasi u bo'ladi. Audit log'ni trigger'lar va hash zanjiri
-  himoya qiladi, lekin jadval egasi trigger'ni o'chira oladi
-  (`docs/security.md`). Shuning uchun servis ishga tushganda log'ga
-  `audit_privileges_too_broad` ogohlantirishi yoziladi. Bu kutilgan holat.
-
-Bu qadamda DB serverida hech narsa bajarilmaydi.
-
-### 5.1. DB administratoridan so'raladigan narsalar
-
-- PostgreSQL 16 yoki yangi versiyasi.
-- BFF uchun alohida, bo'sh baza. User shu bazaning egasi bo'lishi kerak
-  (`CREATE DATABASE admin_bff OWNER <user>;`), chunki migratsiyalar jadval,
-  trigger va funksiyalar yaratadi.
-- `pg_hba.conf`da shu user faqat shu bazaga, faqat BFF serveridan
-  (`<BFF_IP>/32`) va `scram-sha-256` bilan kira olsin.
-- DB serverida firewall bo'lsa, PostgreSQL porti BFF serveri uchun ochilsin.
-- Iloji bo'lsa, TLS yoqilsin (`ssl = on`). Ubuntu va Debian'ning PostgreSQL
-  paketlarida u odatda yoqilgan bo'ladi.
-
-### 5.2. Parol
-
-Parol ekranga chiqmaydi va shell tarixiga tushmaydi:
+BFF bazaga beshta qiymat bilan ulanadi: host, port, baza nomi, user va parol.
+DB serverida hech narsa sozlanmaydi. To'rtta qiymat 7-qadamda `admin-bff.env`ga
+yoziladi, parol esa shu yerda faylga yoziladi. Parol ekranga chiqmaydi va
+shell tarixiga tushmaydi:
 
 ```bash
 ( umask 077; read -rsp 'DB paroli: ' P; echo
   printf '%s' "$P" > /etc/admin-bff/credentials/db_password; unset P )
-ls -l /etc/admin-bff/credentials/db_password     # root root -rw-------
 ```
 
-### 5.3. Tarmoq
-
-```bash
-timeout 3 bash -c '</dev/tcp/<DB_IP>/5432' && echo ochiq
-```
-
-`ochiq` chiqmasa, DB serveridagi firewall yoki `listen_addresses` ulanishni
-o'tkazmayapti: bu DB administratori bilan hal qilinadi. User va parol
-8-qadamda, migratsiyalarda tekshiriladi.
+Jadvallarni 8-qadamdagi migratsiyalar yaratadi. DB serverida TLS yoqilgan
+bo'lsa, ulanish o'zi shifrlanadi. Migratsiyalar va servis bitta user bilan
+ishlaydi (egasining qarori, 2026-11-24; `docs/security.md`).
 
 ## 6. Redis 7.4 (BFF'ning o'z instansi)
 
@@ -320,8 +283,8 @@ nano /etc/admin-bff/admin-bff.env
 Tekshiriladigan qiymatlar:
 
 - `FRONTEND_ORIGIN`: frontendning haqiqiy domeni;
-- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`: DB administratori bergan
-  qiymatlar (5-qadam);
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`: DB'ga ulanish ma'lumotlari
+  (5-qadam);
 - `REDIS_URL`: `unix:///run/admin-bff-redis/redis.sock?db=0`.
 
 ## 8. Migratsiyalar va servis
@@ -342,17 +305,11 @@ systemctl enable --now admin-bff
 systemctl status admin-bff --no-pager
 curl -s --unix-socket /run/admin-bff/bff.sock http://localhost/ready   # {"status":"ok",...}
 systemd-analyze security admin-bff
-journalctl -u admin-bff -n 200 --no-pager | grep -E 'database_tls|audit_privileges_too_broad'
+journalctl -u admin-bff -n 200 --no-pager | grep database_tls   # "encrypted": true yoki false
 ```
 
-Oxirgi buyruqda:
-
-- `"encrypted": true`: DB ulanishi shifrlangan.
-- `"encrypted": false`: DB serverida TLS yo'q, parol va ma'lumotlar tarmoqda
-  ochiq ketadi. DB administratoridan `ssl = on` so'raladi. Yoqilgandan keyin
-  `systemctl restart admin-bff` qilinadi.
-- `audit_privileges_too_broad`: kutilgan holat, bitta DB user bilan ishlanadi
-  (5-qadam).
+Log'dagi `audit_privileges_too_broad` ogohlantirishi kutilgan holat: bitta DB
+user bilan ishlanadi (5-qadam).
 
 Servis ishga tushmasa, sababi `journalctl -u admin-bff -n 50 --no-pager`da
 ko'rinadi. Ko'p uchraydigan sabablar:
@@ -361,8 +318,7 @@ ko'rinadi. Ko'p uchraydigan sabablar:
 - Redis paroli `credentials/redis_password` bilan bir xil emas;
 - DB'ga ulanib bo'lmayapti. Migratsiya o'tib, servis ulana olmasa, sabab
   `admin-bff.service.d/db.conf`dagi IP. Ikkalasi ham ulana olmasa, host, port,
-  user va parol, DB serveridagi `pg_hba.conf` va firewall tekshiriladi
-  (5-qadam).
+  baza nomi, user va parol tekshiriladi (5- va 7-qadamlar).
 
 ## 9. Birinchi superadmin
 
@@ -453,7 +409,7 @@ systemctl reload admin-bff
 
 Yangi versiya migratsiya qo'shgan bo'lsa, eski kod yangi sxema bilan ishga
 tushmaydi. Unda `alembic downgrade`dan oldin bazaning nusxasi olinadi
-(`pg_dump -Fc`, DB administratori orqali).
+(`pg_dump -Fc`).
 
 ### Python va Redis'ning xavfsizlik yangilanishlari
 
