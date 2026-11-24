@@ -1,7 +1,7 @@
 """Prometheus metrics (section 11), served at `/metrics`.
 
 `/metrics` is not an API route: Nginx closes it on the public server block and
-serves it only on 127.0.0.1 (deploy/nginx/admin-bff-internal.conf). It holds
+serves it only on 127.0.0.1 (deploy/nginx/admin-api.conf, part 2). It holds
 counters only, no personal data.
 
 Under Gunicorn every worker is a separate process, so the counters are kept in

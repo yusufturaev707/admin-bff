@@ -1,5 +1,5 @@
 """The read-only docs viewer for the frontend developer (openapi/index.html,
-deploy/nginx/admin-bff-docs.conf): every file it needs is in the repo, and it
+deploy/nginx/admin-api.conf, part 3): every file it needs is in the repo, and it
 answers on the API's own paths, so only the host changes once the domain is
 connected."""
 
@@ -11,7 +11,7 @@ from app.api.docs import DOCS_URL, OPENAPI_URL, STATIC_URL
 ROOT = Path(__file__).resolve().parents[2]
 VIEWER = ROOT / "openapi"
 SWAGGER = ROOT / "app" / "static" / "swagger-ui"
-NGINX = (ROOT / "deploy" / "nginx" / "admin-bff-docs.conf").read_text(encoding="utf-8")
+NGINX = (ROOT / "deploy" / "nginx" / "admin-api.conf").read_text(encoding="utf-8")
 STATIC = f"{STATIC_URL}/"
 # URL -> file in openapi/
 FILES = {

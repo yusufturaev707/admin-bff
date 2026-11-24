@@ -181,10 +181,8 @@ Fayllar `deploy/` papkasida:
 | `gunicorn.conf.py` | Gunicorn + `uvicorn_worker.UvicornWorker`, `/run/admin-bff/bff.sock`, Prometheus multiprocess fayllari |
 | `admin-bff.env.example` | `/etc/admin-bff/admin-bff.env` namunasi |
 | `admin-bff-redis.service`, `admin-bff-redis.conf` | BFF'ning alohida sessiya Redis'i: manbadan yig'ilgan 7.4, `/opt/admin-bff-redis` (faqat unix socket, `requirepass`) |
-| `nginx/admin-api.conf` | API server bloki: TLS, HSTS, rate limit, SSE, `/internal/` yopiq. Faqat o'z domeni (`server_name`, `# DOMEN`) |
+| `nginx/admin-api.conf` | BFF'ning yagona nginx fayli: API `https://kpi.uzbmb.uz` (TLS, HSTS, rate limit, SSE, `/internal/` yopiq), ichki `127.0.0.1:18081` (JWKS, `/metrics`), faqat o'qish uchun hujjatlar `http://<server_IP>:8090/api/v1/docs` |
 | `nginx/admin-frontend.conf` | frontend server bloki, faqat o'z domeni |
-| `nginx/admin-bff-internal.conf` | faqat `127.0.0.1`: JWKS va `/metrics` |
-| `nginx/admin-bff-docs.conf` | domensiz API hujjatlari frontendchi uchun: `http://<server_IP>:8090/api/v1/docs`, faqat o'qish (`openapi/index.html`) |
 | `nginx/admin-allowlist.conf` | IP allowlist (sukut bo'yicha hammasi yopiq) |
 | `admin-bff.sh` | serverdagi qisqa buyruq `admin-bff`: `update`, `migrate`, `superadmin <login>`, `status` |
 | `deploy.sh` | `git pull`, `uv sync --frozen`, `alembic upgrade head`, `systemctl reload` (`admin-bff update`) |
@@ -210,7 +208,7 @@ sudo admin-bff superadmin <login>
 
 Prometheus metrikalari `/metrics` manzilida. Ular tashqaridan yopiq, faqat
 serverning o'zidan ochiladi: `http://127.0.0.1:18081/metrics`
-(`nginx/admin-bff-internal.conf`). Ularda quyidagilar bor:
+(`nginx/admin-api.conf`, 2-qism). Ularda quyidagilar bor:
 
 - HTTP so'rovlar soni va davomiyligi, route shabloni bo'yicha;
 - muvaffaqiyatsiz login'lar va bloklanishlar;

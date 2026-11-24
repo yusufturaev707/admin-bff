@@ -12,6 +12,14 @@ SITES = {
     "admin-api.conf": ("kpi.uzbmb.uz", "/etc/nginx/tls/admin-api"),
     "admin-frontend.conf": ("admin.uzbmb.uz", "/etc/nginx/tls/admin-frontend"),
 }
+# admin-api.conf holds all of the BFF: the API, then the internal block on
+# loopback and the read-only docs on their own port. `_` only appears on ports
+# no other site uses.
+LISTENS = {
+    "admin-api.conf": ["80", "443 ssl http2", "127.0.0.1:18081", "8090"],
+    "admin-frontend.conf": ["80", "443 ssl http2"],
+}
+EXTRA_NAMES = {"admin-api.conf": ["_", "_"], "admin-frontend.conf": []}
 
 
 def _conf(name: str) -> str:
@@ -23,11 +31,12 @@ def test_the_site_answers_only_to_its_domain(name: str) -> None:
     conf = _conf(name)
     domain, _ = SITES[name]
     # Directives only, not the comments that mention them.
-    assert re.findall(r"^\s+server_name ([^;]+);", conf, re.MULTILINE) == [domain, domain]
+    names = re.findall(r"^\s+server_name ([^;]+);", conf, re.MULTILINE)
+    assert names == [domain, domain, *EXTRA_NAMES[name]]
     listens = re.findall(r"^\s+listen ([^;]+);", conf, re.MULTILINE)
     # Another project's IP-based or unknown-name traffic must never land here:
-    # no default_server, no extra port.
-    assert listens == ["80", "443 ssl http2"]
+    # no default_server, and on 80/443 only the domain.
+    assert listens == LISTENS[name]
 
 
 @pytest.mark.parametrize("name", SITES)
@@ -63,3 +72,13 @@ def test_the_frontend_may_reach_the_api_domain() -> None:
     csp = re.search(r'Content-Security-Policy "([^"]+)"', _conf("admin-frontend.conf"))
     assert csp is not None
     assert f"connect-src 'self' https://{api_domain};" in csp.group(1)
+
+
+def test_the_internal_block_listens_on_loopback_only() -> None:
+    conf = _conf("admin-api.conf")
+    internal = conf.split("listen 127.0.0.1:18081;", 1)[1].split("\n}\n", 1)[0]
+    assert "location = /internal/jwks.json {" in internal
+    assert "location = /metrics {" in internal
+    assert re.search(r"location / \{\s+return 404;", internal)
+    assert not (NGINX / "admin-bff-internal.conf").exists()
+    assert not (NGINX / "admin-bff-docs.conf").exists()

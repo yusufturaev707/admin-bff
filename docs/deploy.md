@@ -93,7 +93,7 @@ Natijaga qarab:
   bo'ladi: IP orqali yoki noma'lum domen bilan kelgan so'rovlar unga tushadi.
   BFF fayllari `sites-enabled`ga `zz-` bilan boshlanadigan nom bilan ulanadi
   (10-qadam), shunda default server o'zgarmaydi.
-- **18081-port.** `admin-bff-internal.conf` (JWKS va `/metrics`, faqat
+- **18081-port.** `admin-api.conf`ning ichki qismi (JWKS va `/metrics`, faqat
   `127.0.0.1`) shu portda tinglaydi. Band bo'lsa, boshqa bo'sh port tanlanadi
   va 11-qadamdagi `curl`da ham almashtiriladi.
 - **Aniq IP bilan `listen`.** Boshqa loyiha `listen 10.x.x.x:443 ssl;` kabi
@@ -383,28 +383,49 @@ ln -s <ssl_certificate_fayli>     /etc/nginx/tls/admin-api/fullchain.pem
 ln -s <ssl_certificate_key_fayli> /etc/nginx/tls/admin-api/privkey.pem
 ```
 
-**4. Ulash.** `admin-api.conf`da domen allaqachon `kpi.uzbmb.uz`. nginx
-`sites-enabled`dagi fayllarni alifbo tartibida o'qiydi. `default_server`
-yozilmagan bo'lsa, ip:port'dagi birinchi sayt IP orqali yoki noma'lum nom
-bilan kelgan so'rovlarni oladi. `admin-*` alifboda boshqa saytlardan
-(`api-iiv...`, `exam...`) oldin keladi, shuning uchun nomlar `zz-` bilan
-boshlanadi:
+**4. Ulash.** BFF'ning hamma nginx sozlamasi bitta faylda: `admin-api.conf`
+(API, ichki JWKS va `/metrics`, 8090'dagi hujjatlar). Domen unda allaqachon
+`kpi.uzbmb.uz`.
+
+`sites-enabled`dagi nom avval tekshiriladi. `default_server` yozilmagan
+bo'lsa, nginx alifboda birinchi turgan saytni default qiladi: IP orqali yoki
+noma'lum nom bilan kelgan so'rovlar unga tushadi. `admin-api` alifboda
+`api-iiv...` va `exam...`dan oldin keladi.
 
 ```bash
+grep -rn "default_server" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/
+```
+
+- Natijada `listen 80 ... default_server` ham, `listen 443 ... default_server`
+  ham bo'lsa, default server aniq belgilangan va nom ahamiyatsiz:
+  `L=admin-api.conf`.
+- Bo'lmasa, `L=zz-admin-api.conf`. `zz-` bilan boshlangan nom boshqa
+  saytlardan keyin o'qiladi, shuning uchun ularning IP orqali kelgan
+  so'rovlari BFF'ga tushmaydi.
+
+```bash
+L=zz-admin-api.conf                              # yoki admin-api.conf (yuqoriga qarang)
+
 # Hozirgi holat (yozib qo'ying):
 curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
 curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
 
-cp /srv/admin-bff/deploy/nginx/admin-api.conf /srv/admin-bff/deploy/nginx/admin-bff-internal.conf \
-   /etc/nginx/sites-available/
-ln -s /etc/nginx/sites-available/admin-api.conf /etc/nginx/sites-enabled/zz-admin-api.conf
-ln -s /etc/nginx/sites-available/admin-bff-internal.conf /etc/nginx/sites-enabled/zz-admin-bff-internal.conf
+# Oldingi alohida fayllar bo'lsa, olib tashlanadi:
+rm -f /etc/nginx/sites-enabled/admin-api.conf /etc/nginx/sites-enabled/zz-admin-api.conf \
+      /etc/nginx/sites-enabled/zz-admin-bff-internal.conf /etc/nginx/sites-enabled/zz-admin-bff-docs.conf \
+      /etc/nginx/sites-available/admin-bff-internal.conf /etc/nginx/sites-available/admin-bff-docs.conf
+
+cp /srv/admin-bff/deploy/nginx/admin-api.conf /etc/nginx/sites-available/
+ln -s /etc/nginx/sites-available/admin-api.conf /etc/nginx/sites-enabled/$L
 nginx -t && systemctl reload nginx
 
 # Boshqa saytlar uchun avvalgidek bo'lishi kerak:
 curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
 curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
 ```
+
+Keyin `admin-bff update` repo'dagi faylni yangilasa, u serverga qaytadan
+nusxalanadi: `cp /srv/admin-bff/deploy/nginx/admin-api.conf /etc/nginx/sites-available/ && nginx -t && systemctl reload nginx`.
 
 **5. Tekshirish.** `--resolve` domenni shu serverga yo'naltiradi, shuning uchun
 DNS bo'lmasa ham ishlaydi. Sertifikat ham tekshiriladi, `-k` yo'q:
@@ -416,8 +437,8 @@ curl -s --resolve kpi.uzbmb.uz:80:127.0.0.1  -o /dev/null -w '%{http_code} %{red
 ```
 
 - **Boshqa saytlar uchun natija o'zgargan bo'lsa** (masalan, `403` chiqsa),
-  BFF default server bo'lib qolgan. BFF saytlari darhol o'chiriladi:
-  `rm /etc/nginx/sites-enabled/zz-admin-*.conf && nginx -t && systemctl reload nginx`.
+  BFF default server bo'lib qolgan. U darhol o'chiriladi:
+  `rm /etc/nginx/sites-enabled/$L && nginx -t && systemctl reload nginx`.
 - **`nginx -t` xato bersa**, `reload` qilinmaydi va boshqa saytlar eski
   config bilan ishlashda davom etadi.
 - **`curl: (60) SSL certificate problem`** chiqsa, symlink noto'g'ri faylga
@@ -501,26 +522,21 @@ https://github.com/redis/redis/releases.
 Eski manba papkalari (`/usr/local/src/Python-*`, `/usr/local/src/redis-*`)
 keyin o'chiriladi.
 
-## API hujjatlari frontendchi uchun (domensiz)
+## API hujjatlari frontendchi uchun (frontend ishga tushguncha)
 
-Domen va frontend hali yo'q bo'lsa, frontendchi API hujjatlarini server IP'si
+Frontend hali yo'q bo'lsa, frontendchi API hujjatlarini server IP'si
 va porti orqali ko'radi: `http://<server_IP>:8090/api/v1/docs`. Bu faqat
 o'qish uchun Swagger UI: nginx repo'dagi sxemani (`openapi/v1.json`)
 ko'rsatadi, BFF'ga so'rov ketmaydi. Sxema `admin-bff update` bilan o'zi
 yangilanadi. Yo'llar API'ning o'zidagidek (`/api/v1/docs`,
-`/api/v1/openapi.json`): domen ulanganda frontendchi faqat host'ni almashtiradi.
+`/api/v1/openapi.json`): keyin frontendchi faqat host'ni almashtiradi.
+
+Bu `admin-api.conf`ning 3-qismi, alohida ulanmaydi: 10-qadamda fayl bilan
+birga yoqiladi. Frontendchining IP'si ruxsat ro'yxatida bo'lishi kerak
+(10-qadam, 2-band).
 
 ```bash
-ss -ltn | grep -E ':8090\b'                      # bo'sh chiqishi kerak
-
-cp /srv/admin-bff/deploy/nginx/admin-allowlist.conf /etc/nginx/snippets/   # 10-qadamda qilingan bo'lsa, shart emas
-nano /etc/nginx/snippets/admin-allowlist.conf    # "deny all;"dan oldin: allow <frontendchi_IP>;
-
-cp /srv/admin-bff/deploy/nginx/admin-bff-docs.conf /etc/nginx/sites-available/
-ln -s /etc/nginx/sites-available/admin-bff-docs.conf /etc/nginx/sites-enabled/zz-admin-bff-docs.conf
-nginx -t && systemctl reload nginx
-
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/api/v1/openapi.json   # 403: 127.0.0.1 allowlist'da yo'q
+ss -ltn | grep -E ':8090\b'                      # nginx tinglayotgan bo'lishi kerak
 ufw status | head -1                             # "Status: active" bo'lsa, pastda
 ```
 
@@ -530,14 +546,14 @@ ufw status | head -1                             # "Status: active" bo'lsa, past
   sxemaning o'zi `http://<server_IP>:8090/api/v1/openapi.json`. Tiplangan
   client shu manzildan yasaladi, masalan
   `npx openapi-typescript http://<server_IP>:8090/api/v1/openapi.json -o src/api/schema.d.ts`.
-- **Sahifadan so'rov yuborib bo'lmaydi ("Try it out" yo'q).** Login cookie'si
-  faqat HTTPS orqali ishlaydi, shuning uchun API'ni sinash uchun domen va
-  sertifikat (10-qadam) yoki alohida test muhiti kerak.
+- **Sahifadan so'rov yuborib bo'lmaydi ("Try it out" yo'q).** Production'dagi
+  `https://kpi.uzbmb.uz/api/v1/docs` frontend orqali kirilgan sessiyani talab
+  qiladi, frontend esa hali yo'q.
 - **`403` chiqsa**, frontendchining IP'si allowlist'da yo'q. **`404` yoki `500`
   chiqsa**, nginx `/srv/admin-bff/openapi`ni o'qiy olmayapti:
   `namei -l /srv/admin-bff/openapi/v1.json`.
-- Domen paydo bo'lgach, bu sayt o'chiriladi:
-  `rm /etc/nginx/sites-enabled/zz-admin-bff-docs.conf && nginx -t && systemctl reload nginx`.
+- Frontend ishga tushgach, 3-qism `/etc/nginx/sites-available/admin-api.conf`dan
+  o'chiriladi va `nginx -t && systemctl reload nginx` qilinadi.
 
 ## Hozircha yo'q
 
