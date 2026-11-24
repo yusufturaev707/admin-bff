@@ -211,6 +211,8 @@ def _lifespan(
                 "db": partial(ping_database, engine),
                 "redis": partial(ping_redis, redis),
             }
+            if settings.is_production and settings.docs_try_it_out:
+                logger.warning("docs_try_it_out_enabled")
             logger.info("startup", version=__version__, env=settings.app_env)
             yield
         finally:
@@ -266,8 +268,9 @@ def create_app(
     app.add_middleware(
         OriginCheckMiddleware,
         allowed_origin=settings.frontend_origin,
-        # Swagger UI's "Try it out" (app.api.docs); never in production.
-        allow_same_origin=not settings.is_production,
+        # Swagger UI's "Try it out" (app.api.docs): outside production, or in
+        # production while DOCS_TRY_IT_OUT is on.
+        allow_same_origin=settings.docs_open,
     )
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
     if settings.frontend_origin is not None:

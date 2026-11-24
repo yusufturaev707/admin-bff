@@ -14,7 +14,9 @@ POST, PUT, PATCH and DELETE.
 Outside production everything is open, and the Origin check also accepts the
 API's own origin, so requests from this page pass. In production the docs need
 a session with `admin:api:docs` (sign in to the admin frontend first) and are
-read-only: unsafe requests from here fail the Origin check.
+read-only: unsafe requests from here fail the Origin check. DOCS_TRY_IT_OUT
+gives production the open behaviour until the frontend exists
+(`Settings.docs_open`).
 """
 
 from collections.abc import Callable, Iterator
@@ -30,7 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from app.auth.csrf import UNSAFE_METHODS
 from app.auth.dependencies import CSRF_HEADER, SESSION_COOKIE
 from app.core.guards import guard_permissions
-from app.rbac.dependencies import require_in_production
+from app.rbac.dependencies import require_unless_docs_open
 from app.rbac.route_check import PUBLIC_PATHS
 
 DOCS_URL = "/api/v1/docs"
@@ -184,7 +186,7 @@ _INIT = """(() => {
 router = APIRouter(
     tags=["docs"],
     include_in_schema=False,
-    dependencies=[Depends(require_in_production("admin:api:docs"))],
+    dependencies=[Depends(require_unless_docs_open("admin:api:docs"))],
 )
 _NO_STORE = {"Cache-Control": "no-store"}
 
@@ -197,7 +199,7 @@ async def docs() -> HTMLResponse:
 @router.get(f"{DOCS_URL}/init.js", operation_id="core_docsinit_get", response_class=Response)
 async def docs_init(request: Request) -> Response:
     settings = request.app.state.settings
-    script = _INIT.replace("__SIGN_IN__", "false" if settings.is_production else "true")
+    script = _INIT.replace("__SIGN_IN__", "true" if settings.docs_open else "false")
     return Response(script, media_type="text/javascript", headers=_NO_STORE)
 
 

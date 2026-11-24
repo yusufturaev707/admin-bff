@@ -124,6 +124,52 @@ async def test_sign_in_bar_is_on_outside_production(client: httpx.AsyncClient) -
     assert css.headers["content-type"].startswith("text/css")
 
 
+async def test_try_it_out_opens_the_docs_in_production(
+    settings: Settings,
+    clock: FakeClock,
+    services: Services,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """DOCS_TRY_IT_OUT (until the frontend exists): Swagger UI on the API's own
+    origin signs in and writes in production; other origins still cannot."""
+
+    async def no_check(*args: object) -> None:
+        return None
+
+    monkeypatch.setattr(main, "check_database", no_check)
+    superadmin = await make_superadmin(settings, clock)
+    production = settings.model_copy(
+        update={
+            "app_env": "production",
+            "argon2_time_cost": 2,
+            "argon2_memory_cost_kib": 19456,
+            "docs_try_it_out": True,
+        }
+    )
+    app = create_app(production, clock=clock)
+    async with app_client(app, origin=SWAGGER_ORIGIN) as swagger:
+        assert (await swagger.get(DOCS_URL)).status_code == 200
+        assert "const SIGN_IN = true;" in (await swagger.get(f"{DOCS_URL}/init.js")).text
+        assert (await swagger.get(OPENAPI_URL)).status_code == 200
+        start = await swagger.post(
+            f"{AUTH}/login",
+            json={"username": superadmin.username, "password": superadmin.password},
+        )
+        assert start.status_code == 200, start.text
+        created = await swagger.post(
+            "/api/v1/admin/roles",
+            json={"name": "from_swagger", "permissions": []},
+            headers={"X-CSRF-Token": start.json()["csrf_token"]},
+        )
+        assert created.status_code == 201, created.text
+        async with extra_client(app, origin="https://evil.example") as other:
+            rejected = await other.post(f"{AUTH}/login", json={"username": "x", "password": "y"})
+        assert rejected.json()["error"]["code"] == "csrf_failed"
+    assert '"event": "docs_try_it_out_enabled"' in capsys.readouterr().out
+    await services.reset()
+
+
 async def test_sign_in_bar_is_off_in_production(
     production: httpx.AsyncClient, settings: Settings, clock: FakeClock
 ) -> None:
