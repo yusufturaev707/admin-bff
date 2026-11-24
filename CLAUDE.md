@@ -291,7 +291,7 @@ Har bir endpoint aniq bir permission talab qiladi. Permission'siz route topilsa,
 **Deny-by-default:**
 
 - Ishga tushishda barcha `APIRoute`'lar tekshiriladi. `require*` dependency'si yo'q va public ro'yxatda ham bo'lmagan route topilsa, `RuntimeError` ko'tariladi. Bu holat test bilan ham tekshiriladi.
-- Public ro'yxat: `/api/v1/auth/login`, `/api/v1/auth/oneid/start`, `/api/v1/auth/oneid/callback`, `/health`, `/ready`.
+- Public ro'yxat: `/api/v1/auth/login`, `/api/v1/auth/oneid/start`, `/api/v1/auth/oneid/callback`, `/health`, `/ready`. **Egasining qarori (2026-11-24):** Swagger sahifasining qobig'i ham public (`/api/v1/docs`, `init.js`, `docs.css`, `app.api.docs.PUBLIC_PAGES`): unda ma'lumot yo'q, uning login paneli frontend bo'lmaganda kirish yo'li. Sxema (`/api/v1/openapi.json`) production'da `admin:api:docs` bilan.
 
 **Row-level tekshiruv:** egasining qarori (2026-11-23) bilan admin scope'lari (`user_scopes`, region/zone/branch) olib tashlandi (migratsiya 0005). Barcha adminlar bitta markaziy binoda ishlaydi; hududiy cheklov kerak bo'lsa, qaytadan loyihalanadi.
 
@@ -414,7 +414,7 @@ Frontend dasturchi faqat `/api/v1/openapi.json` sxemasi bilan ishlaydi. Shuning 
 - **Tavsif to'liq bo'ladi.** Har bir endpoint'da tizim bo'yicha `tags` bor. `operationId` `<system>_<resource>_<verb>` ko'rinishida yoziladi. Javob modellari Pydantic'da, misollar bilan.
 - **Client generatsiya.** Frontend sxemadan `openapi-typescript` yoki `orval` bilan tiplangan client yasaydi.
 - **CI tekshiruvi.** OpenAPI snapshot'i saqlanadi. Kontraktni buzadigan o'zgarish chiqsa, CI xato beradi.
-- **`/docs` production'da yopiq.** U faqat `admin:api:docs` permission'i bor adminlarga ochiladi. Swagger assetlari lokal turadi.
+- **`/docs` production'da yopiq.** U faqat `admin:api:docs` permission'i bor adminlarga ochiladi. Swagger assetlari lokal turadi. **Egasining qarori (2026-11-24):** sahifada login paneli bor (production ham), sxema faqat `admin:api:docs` bilan yuklanadi, "Try it out" ishlaydi.
 
 **Pagination, filtr, saralash:**
 
@@ -456,7 +456,7 @@ Xato kodlari: `not_authenticated`, `session_expired`, `forbidden`, `csrf_failed`
 
 - CORS faqat frontend origin'i uchun `allow_credentials=True` bilan ochiladi. `*` hech qachon ishlatilmaydi.
 - Frontend barcha so'rovlarni `credentials: 'include'` bilan yuboradi. SSE uchun `new EventSource(url, { withCredentials: true })` ishlatiladi.
-- CSRF tekshiruvida `Origin` aynan shu frontend origin'i bilan solishtiriladi.
+- CSRF tekshiruvida `Origin` aynan shu frontend origin'i bilan solishtiriladi. **Egasining qarori (2026-11-24):** API'ning o'z origin'i ham qabul qilinadi (Swagger shu yerdan so'rov yuboradi; bu cross-site emas, `app/auth/csrf.py`).
 - `__Host-` prefiksli cookie API domenida qoladi va `Domain` atributisiz o'rnatiladi.
 - Ikkala domenga kirish faqat bino ichki tarmog'idan, Nginx IP allowlist orqali (11-bo'lim).
 

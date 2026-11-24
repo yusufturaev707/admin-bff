@@ -172,9 +172,9 @@ def _lifespan(
         validate_routes(app)
         registry: PermissionRegistry = app.state.registry
         # Deny-by-default (section 7). Tests may add their own public test routes.
-        validate_access(
-            app, registry, extra_public=getattr(app.state, "extra_public_paths", frozenset())
-        )
+        # The Swagger page holds no data and is public; its schema is guarded.
+        extra: frozenset[str] = getattr(app.state, "extra_public_paths", frozenset())
+        validate_access(app, registry, extra_public=docs.PUBLIC_PAGES | extra)
         # OneID stays off unless enabled; enabled without a client, startup stops.
         oneid = (oneid_client or build_oneid_client(settings)) if settings.oneid_enabled else None
         engine = create_engine(settings)
@@ -266,8 +266,9 @@ def create_app(
     app.add_middleware(
         OriginCheckMiddleware,
         allowed_origin=settings.frontend_origin,
-        # Swagger UI's "Try it out" (app.api.docs); never in production.
-        allow_same_origin=not settings.is_production,
+        # Swagger UI at /api/v1/docs sends its requests from the API's own
+        # origin (owner's decision, 2026-11-24: production too).
+        allow_same_origin=True,
     )
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
     if settings.frontend_origin is not None:
@@ -293,6 +294,7 @@ def create_app(
     # Not an API route (no guard, not in OpenAPI): Nginx serves it on 127.0.0.1 only.
     app.add_route(METRICS_PATH, metrics_endpoint, include_in_schema=False)
     app.include_router(docs.router)
+    app.include_router(docs.schema_router)
     app.mount(docs.STATIC_URL, docs.static_files(), name="swagger-ui")
     app.include_router(auth.router)
     app.include_router(me.router)

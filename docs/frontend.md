@@ -4,20 +4,19 @@ Frontend faqat BFF API bilan ishlaydi.
 
 - **Swagger UI:** `/api/v1/docs`. Sxema: `/api/v1/openapi.json`, repo'dagi
   nusxasi: `openapi/v1.json`.
-- **Kirish.** Development'da ikkalasi ham login'siz ochiladi. Production'da
-  `admin:api:docs` ruxsati kerak: avval adminkaga kiring, keyin shu brauzerda
-  API domenidagi `/api/v1/docs`ni oching.
-- **Swagger'dan ishlash (development).** Sahifa tepasidagi panelga login va
-  parolni kiritib "Kirish"ni bosing. Shundan keyin "Try it out" barcha
-  endpoint'larda ishlaydi, `X-CSRF-Token`ni sahifaning o'zi qo'shadi.
-  - Birinchi kirishda panel "password_change" qadamini ko'rsatadi: parolni
-    `POST /auth/password` orqali Swagger'ning o'zida almashtiring.
-  - Sahifani `http://localhost:8000` yoki HTTPS orqali oching. Boshqa
-    `http://` manzilda (masalan, LAN IP orqali) brauzer `Secure` cookie'ni
-    saqlamaydi va kirish ishlamaydi.
-- **Production'da Swagger faqat o'qish uchun.** Undan POST, PUT va DELETE
-  yuborib bo'lmaydi, chunki Origin tekshiruvi faqat frontend origin'ini qabul
-  qiladi.
+- **Manzil:** production'da `https://kpi.uzbmb.uz/api/v1/docs`, lokal
+  development'da `http://localhost:8000/api/v1/docs`.
+- **Kirish.** Sahifa tepasidagi panelga login va parolni kiritib "Kirish"ni
+  bosing. Development'da sxema login'siz ham ochiladi, production'da esa
+  `admin:api:docs` ruxsati kerak va Swagger kirgandan keyin chiqadi.
+  - Birinchi kirishda panel joriy va yangi parolni so'raydi. Parol
+    almashgach, barcha sessiyalar tugaydi, yangi parol bilan qayta kiring.
+  - Sahifani HTTPS yoki `http://localhost` orqali oching. Boshqa `http://`
+    manzilda (masalan, LAN IP orqali) brauzer `Secure` cookie'ni saqlamaydi
+    va kirish ishlamaydi.
+- **"Try it out"** barcha endpoint'larda ishlaydi, `X-CSRF-Token`ni sahifaning
+  o'zi qo'shadi. Sahifa API'ning o'z origin'idan so'rov yuboradi, Origin
+  tekshiruvi uni qabul qiladi.
 - **Har bir endpoint'da:**
   - `security`: `session` cookie kerakmi va yozish so'rovida `csrf` sarlavhasi;
   - `x-permissions`: kerakli permission (menyu va tugmalarni shunga qarab

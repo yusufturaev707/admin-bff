@@ -93,8 +93,9 @@ curl -i http://127.0.0.1:8000/ready     # 200, DB yoki Redis ishlamasa 503
 Production'dan tashqari muhitda OpenAPI sxemasi
 `http://127.0.0.1:8000/api/v1/openapi.json`, Swagger UI esa
 `http://127.0.0.1:8000/api/v1/docs` manzilida. Swagger assetlari lokal
-(`app/static/swagger-ui/`, CDN ishlatilmaydi). Production'da ikkalasi faqat
-`admin:api:docs` ruxsati bor adminga ochiladi.
+(`app/static/swagger-ui/`, CDN ishlatilmaydi). Production'da
+(`https://kpi.uzbmb.uz/api/v1/docs`) sahifaning tepasidagi panel orqali
+kiriladi, sxema faqat `admin:api:docs` ruxsati bor adminga ochiladi.
 
 ## Tekshiruvlar
 

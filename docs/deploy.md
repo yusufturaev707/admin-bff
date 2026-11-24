@@ -425,9 +425,10 @@ bilan va proxy'ning emas, kompyuterning IP'si bilan ko'rinishi kerak.
   uning IP'si boshqa (`# PROXY` qatorlari).
 - **Boshqa saytlar ishlamay qolsa**, BFF sayti darhol o'chiriladi:
   `rm /etc/nginx/sites-enabled/$L && nginx -t && systemctl reload nginx`.
-- `https://kpi.uzbmb.uz/api/v1/docs` production'da faqat `admin:api:docs`
-  ruxsati bor sessiya bilan ochiladi. Frontend bo'lmaguncha hujjatlar
-  8090-portda o'qiladi ("API hujjatlari frontendchi uchun").
+- **API hujjatlari:** `https://kpi.uzbmb.uz/api/v1/docs`. Tepadagi panel
+  orqali kiriladi, sxema `admin:api:docs` ruxsati bilan ochiladi (superadmin'da
+  bor). Birinchi kirishda panel parolni almashtirishni so'raydi, keyin yangi
+  parol bilan qayta kiriladi. "Try it out" ishlaydi.
 - SSE (8-bosqich) qo'shilganda tashqi proxy javobni bufer qilmasligi kerak.
   Bu proxy'ning egasi bilan kelishiladi.
 

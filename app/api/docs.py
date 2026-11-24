@@ -1,20 +1,22 @@
 """API docs for the frontend developer: Swagger UI and the OpenAPI schema (section 10).
 
-* `GET /api/v1/docs`: Swagger UI with a sign-in bar (login, password,
-  sign-out). Its assets are served from this app
+* `GET /api/v1/docs`: Swagger UI with a sign-in bar (login, password, the
+  first password change, sign-out). Its assets are served from this app
   (`/api/v1/docs/static/`), because the internal network blocks CDNs.
 * `GET /api/v1/openapi.json`: the schema. Every operation states its access:
   `security` (session cookie, plus the CSRF header for unsafe methods),
   and `x-permissions`.
 
+The page itself holds no data, so it is public (`PUBLIC_PAGES`): it has to
+load before signing in, and its sign-in bar is the way in while there is no
+frontend (owner's decision, 2026-11-24). What is guarded is the schema:
+`admin:api:docs` in production, open outside it. In production Swagger UI
+therefore starts only after signing in.
+
 "Try it out" works like the frontend: the session cookie is set by the sign-in
 response, and the page adds the CSRF token (kept in memory only) to every
-POST, PUT, PATCH and DELETE.
-
-Outside production everything is open, and the Origin check also accepts the
-API's own origin, so requests from this page pass. In production the docs need
-a session with `admin:api:docs` (sign in to the admin frontend first) and are
-read-only: unsafe requests from here fail the Origin check.
+POST, PUT, PATCH and DELETE. Its requests come from the API's own origin,
+which the Origin check accepts (app.auth.csrf).
 """
 
 from collections.abc import Callable, Iterator
@@ -60,6 +62,11 @@ _PAGE = f"""<!doctype html>
            placeholder="parol">
     <button type="submit" id="bff-login">Kirish</button>
   </span>
+  <span id="bff-change" hidden>
+    <input id="bff-old" type="password" autocomplete="current-password" placeholder="joriy parol">
+    <input id="bff-new" type="password" autocomplete="new-password" placeholder="yangi parol">
+    <button type="button" id="bff-change-btn">Parolni almashtirish</button>
+  </span>
   <button type="button" id="bff-logout" hidden>Chiqish</button>
   <span id="bff-note"></span>
 </form>
@@ -81,7 +88,9 @@ _CSS = """#bff-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: cent
 
 _INIT = """(() => {
   "use strict";
-  const SIGN_IN = __SIGN_IN__;
+  // Outside production the schema needs no session. In production it needs
+  // admin:api:docs, so Swagger UI starts after signing in.
+  const SCHEMA_OPEN = __SCHEMA_OPEN__;
   const API = "/api/v1";
   const UNSAFE = ["POST", "PUT", "PATCH", "DELETE"];
   const $ = (id) => document.getElementById(id);
@@ -112,17 +121,56 @@ _INIT = """(() => {
     return {status: response.status, data};
   }
 
+  function startSwagger() {
+    if (window.ui) return;
+    window.ui = SwaggerUIBundle({
+      url: API + "/openapi.json",
+      dom_id: "#swagger-ui",
+      deepLinking: true,
+      displayOperationId: true,
+      displayRequestDuration: true,
+      docExpansion: "none",
+      defaultModelsExpandDepth: 0,
+      filter: true,
+      showExtensions: true,
+      showCommonExtensions: true,
+      tryItOutEnabled: true,
+      queryConfigEnabled: false,
+      withCredentials: true,
+      requestInterceptor: (request) => {
+        if (csrf && UNSAFE.includes(String(request.method || "GET").toUpperCase())) {
+          request.headers["X-CSRF-Token"] = csrf;
+        }
+        return request;
+      },
+      responseInterceptor: (response) => {
+        try {
+          remember(typeof response.body === "object" ? response.body : JSON.parse(response.text));
+        } catch (e) { /* not JSON */ }
+        if (String(response.url || "").includes("/api/v1/auth/")) refresh();
+        return response;
+      },
+    });
+  }
+
   async function refresh() {
     const res = await call("GET", "/auth/session");
     if (res.status === 200) {
       const pending = res.data.pending || [];
       show("Kirilgan: " + res.data.username + (pending.length
         ? " (avval yakunlang: " + pending.join(", ") + ")" : ""), true);
-      $("bff-logout").hidden = !SIGN_IN;
+      $("bff-fields").hidden = true;
+      $("bff-change").hidden = !pending.includes("password_change");
+      $("bff-logout").hidden = false;
+      // The schema is refused while a step is pending (only /auth/* works).
+      if (SCHEMA_OPEN || pending.length === 0) startSwagger();
     } else {
       csrf = null;
       show("Kirilmagan", false);
+      $("bff-fields").hidden = false;
+      $("bff-change").hidden = true;
       $("bff-logout").hidden = true;
+      if (SCHEMA_OPEN) startSwagger();
     }
   }
 
@@ -135,57 +183,40 @@ _INIT = """(() => {
     await refresh();
   }
 
-  async function signOut() {
-    await call("POST", "/auth/logout");
+  async function changePassword() {
+    const res = await call("POST", "/auth/password",
+      {old_password: $("bff-old").value, new_password: $("bff-new").value});
+    $("bff-old").value = "";
+    $("bff-new").value = "";
+    if (res.status >= 300) return show(problem(res), false);
     await refresh();
   }
 
-  if (SIGN_IN) {
-    $("bff-bar").addEventListener("submit", signIn);
-    $("bff-logout").addEventListener("click", signOut);
-    $("bff-note").textContent = "CSRF token o'zi qo'shiladi";
-  } else {
-    $("bff-fields").hidden = true;
-    $("bff-note").textContent = "Production: adminka orqali kiring, bu yerda faqat o'qish";
+  async function signOut() {
+    await call("POST", "/auth/logout");
+    // The schema on the page was this session's: do not leave it behind.
+    if (!SCHEMA_OPEN) return location.reload();
+    await refresh();
   }
 
-  window.ui = SwaggerUIBundle({
-    url: API + "/openapi.json",
-    dom_id: "#swagger-ui",
-    deepLinking: true,
-    displayOperationId: true,
-    displayRequestDuration: true,
-    docExpansion: "none",
-    defaultModelsExpandDepth: 0,
-    filter: true,
-    showExtensions: true,
-    showCommonExtensions: true,
-    tryItOutEnabled: SIGN_IN,
-    queryConfigEnabled: false,
-    withCredentials: true,
-    requestInterceptor: (request) => {
-      if (csrf && UNSAFE.includes(String(request.method || "GET").toUpperCase())) {
-        request.headers["X-CSRF-Token"] = csrf;
-      }
-      return request;
-    },
-    responseInterceptor: (response) => {
-      try {
-        remember(typeof response.body === "object" ? response.body : JSON.parse(response.text));
-      } catch (e) { /* not JSON */ }
-      if (String(response.url || "").includes("/api/v1/auth/")) refresh();
-      return response;
-    },
-  });
+  $("bff-bar").addEventListener("submit", signIn);
+  $("bff-change-btn").addEventListener("click", changePassword);
+  $("bff-logout").addEventListener("click", signOut);
+  $("bff-note").textContent = SCHEMA_OPEN ? "CSRF token o'zi qo'shiladi"
+    : "Sxema admin:api:docs ruxsati bilan ochiladi. CSRF token o'zi qo'shiladi";
   refresh();
 })();
 """
 
-router = APIRouter(
+# The page, its script and its style: public, they hold no data.
+router = APIRouter(tags=["docs"], include_in_schema=False)
+# The schema: admin:api:docs in production.
+schema_router = APIRouter(
     tags=["docs"],
     include_in_schema=False,
     dependencies=[Depends(require_in_production("admin:api:docs"))],
 )
+PUBLIC_PAGES = frozenset({DOCS_URL, f"{DOCS_URL}/init.js", f"{DOCS_URL}/docs.css"})
 _NO_STORE = {"Cache-Control": "no-store"}
 
 
@@ -197,7 +228,7 @@ async def docs() -> HTMLResponse:
 @router.get(f"{DOCS_URL}/init.js", operation_id="core_docsinit_get", response_class=Response)
 async def docs_init(request: Request) -> Response:
     settings = request.app.state.settings
-    script = _INIT.replace("__SIGN_IN__", "false" if settings.is_production else "true")
+    script = _INIT.replace("__SCHEMA_OPEN__", "false" if settings.is_production else "true")
     return Response(script, media_type="text/javascript", headers=_NO_STORE)
 
 
@@ -206,7 +237,7 @@ async def docs_css() -> Response:
     return Response(_CSS, media_type="text/css", headers=_NO_STORE)
 
 
-@router.get(OPENAPI_URL, operation_id="core_openapi_get")
+@schema_router.get(OPENAPI_URL, operation_id="core_openapi_get")
 async def openapi(request: Request) -> JSONResponse:
     return JSONResponse(request.app.openapi(), headers=_NO_STORE)
 

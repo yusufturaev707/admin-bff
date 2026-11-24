@@ -11,7 +11,7 @@ from app.api.docs import DOCS_URL, OPENAPI_URL, STATIC_URL
 from app.main import create_app
 from app.settings import Settings
 from tests.conftest import FakeClock, Services
-from tests.helpers.auth import AUTH, login
+from tests.helpers.auth import AUTH, create_admin, login
 from tests.helpers.client import app_client, extra_client
 from tests.helpers.rbac import make_admin_with, make_superadmin
 
@@ -48,25 +48,39 @@ async def production(
     await services.reset()
 
 
-@pytest.mark.parametrize("path", [DOCS_URL, f"{DOCS_URL}/init.js", OPENAPI_URL])
-async def test_docs_need_a_session_in_production(production: httpx.AsyncClient, path: str) -> None:
-    response = await production.get(path)
+@pytest.mark.parametrize("path", [DOCS_URL, f"{DOCS_URL}/init.js", f"{DOCS_URL}/docs.css"])
+async def test_the_page_is_public_in_production(production: httpx.AsyncClient, path: str) -> None:
+    # It holds no data and must load before signing in: its bar is the way in.
+    assert (await production.get(path)).status_code == 200
+
+
+async def test_the_schema_needs_a_session_in_production(production: httpx.AsyncClient) -> None:
+    response = await production.get(OPENAPI_URL)
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "not_authenticated"
 
 
-async def test_docs_need_the_permission_in_production(
+async def test_the_schema_needs_the_permission_in_production(
     production: httpx.AsyncClient, settings: Settings, clock: FakeClock
 ) -> None:
     viewer = await make_admin_with(settings, clock, ["admin:users:read"])
     await login(production, viewer, clock)
-    assert (await production.get(DOCS_URL)).status_code == 403
     assert (await production.get(OPENAPI_URL)).status_code == 403
 
     developer = await make_admin_with(settings, clock, ["admin:api:docs"])
     await login(production, developer, clock)
-    assert (await production.get(DOCS_URL)).status_code == 200
     assert (await production.get(OPENAPI_URL)).json()["info"]["title"] == "UZBMB Admin"
+
+
+async def test_the_schema_waits_for_the_first_password_change(
+    production: httpx.AsyncClient, settings: Settings, clock: FakeClock
+) -> None:
+    # The pending step is checked before the permission (only /auth/* works).
+    newcomer = await create_admin(settings, clock, must_change_password=True)
+    await login(production, newcomer, clock)
+    response = await production.get(OPENAPI_URL)
+    assert response.status_code == 403
+    assert response.json()["error"]["details"]["pending"] == ["password_change"]
 
 
 @pytest.mark.parametrize("path", ["/openapi.json", "/docs", "/redoc"])
@@ -103,33 +117,56 @@ async def test_swagger_signs_in_and_writes_outside_production(
     assert rejected.json()["error"]["code"] == "csrf_failed"
 
 
-async def test_swagger_is_read_only_in_production(production: httpx.AsyncClient) -> None:
-    response = await production.post(
-        f"{AUTH}/login",
-        json={"username": "x", "password": "y"},
-        headers={"Origin": SWAGGER_ORIGIN},
-    )
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "csrf_failed"
+async def test_swagger_signs_in_and_writes_in_production(
+    settings: Settings, clock: FakeClock, services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sign-in bar works in production too: requests from the API's own
+    origin pass the Origin check, other origins still do not."""
+
+    async def no_check(*args: object) -> None:
+        return None
+
+    monkeypatch.setattr(main, "check_database", no_check)
+    superadmin = await make_superadmin(settings, clock)
+    strong = {"app_env": "production", "argon2_time_cost": 2, "argon2_memory_cost_kib": 19456}
+    app = create_app(settings.model_copy(update=strong), clock=clock)
+    async with app_client(app, origin=SWAGGER_ORIGIN) as swagger:
+        start = await swagger.post(
+            f"{AUTH}/login",
+            json={"username": superadmin.username, "password": superadmin.password},
+        )
+        assert start.status_code == 200, start.text
+        assert (await swagger.get(OPENAPI_URL)).status_code == 200
+        created = await swagger.post(
+            "/api/v1/admin/roles",
+            json={"name": "from_swagger", "permissions": []},
+            headers={"X-CSRF-Token": start.json()["csrf_token"]},
+        )
+        assert created.status_code == 201, created.text
+        async with extra_client(app, origin="https://evil.example") as other:
+            rejected = await other.post(f"{AUTH}/login", json={"username": "x", "password": "y"})
+        assert rejected.json()["error"]["code"] == "csrf_failed"
+    await services.reset()
 
 
-async def test_sign_in_bar_is_on_outside_production(client: httpx.AsyncClient) -> None:
-    init = (await client.get(f"{DOCS_URL}/init.js")).text
-    assert "const SIGN_IN = true;" in init
-    assert "X-CSRF-Token" in init
+async def test_the_sign_in_bar_is_always_there(client: httpx.AsyncClient) -> None:
     page = (await client.get(DOCS_URL)).text
-    assert 'id="bff-bar"' in page
+    for element in ('id="bff-bar"', 'id="bff-change"', 'id="bff-new"', 'id="bff-logout"'):
+        assert element in page
     assert "style=" not in page
+    init = (await client.get(f"{DOCS_URL}/init.js")).text
+    assert "X-CSRF-Token" in init
+    assert '"/auth/password"' in init
+    assert "tryItOutEnabled: true" in init
     css = await client.get(f"{DOCS_URL}/docs.css")
     assert css.headers["content-type"].startswith("text/css")
 
 
-async def test_sign_in_bar_is_off_in_production(
-    production: httpx.AsyncClient, settings: Settings, clock: FakeClock
+async def test_the_schema_is_open_outside_production_only(
+    client: httpx.AsyncClient, production: httpx.AsyncClient
 ) -> None:
-    developer = await make_admin_with(settings, clock, ["admin:api:docs"])
-    await login(production, developer, clock)
-    assert "const SIGN_IN = false;" in (await production.get(f"{DOCS_URL}/init.js")).text
+    assert "const SCHEMA_OPEN = true;" in (await client.get(f"{DOCS_URL}/init.js")).text
+    assert "const SCHEMA_OPEN = false;" in (await production.get(f"{DOCS_URL}/init.js")).text
 
 
 async def test_schema_states_the_access_of_every_operation(client: httpx.AsyncClient) -> None:

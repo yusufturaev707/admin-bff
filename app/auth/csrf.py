@@ -9,10 +9,12 @@ requests, and the frontend is on another origin than the API.
 Part 2, the `X-CSRF-Token` check against the session, is in
 app.auth.dependencies.current_session.
 
-Outside production the API's own origin is accepted too (`allow_same_origin`):
-Swagger UI at /api/v1/docs is served by the API and sends its requests from
-there. A cross-site page still cannot pass, because its Origin is its own.
-Production accepts FRONTEND_ORIGIN only.
+The API's own origin is accepted too (`allow_same_origin`; production as
+well since 2026-11-24, owner's decision): Swagger UI at /api/v1/docs is served
+by the API and sends its requests from there. That is not cross-site, so it is
+not what CSRF protects against. A cross-site page still cannot pass, because
+its Origin is its own. The own origin is the request's scheme and Host: behind
+nginx, X-Forwarded-Proto and the Host nginx sets.
 """
 
 from starlette.requests import Request
