@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Admin BFF'ni yangilash: git pull -> uv sync -> alembic upgrade -> reload.
-# root sifatida ishga tushiriladi:  sudo /opt/admin-bff/deploy/deploy.sh
+# root sifatida ishga tushiriladi:  sudo /srv/admin-bff/deploy/deploy.sh
 #
 # Kod root'ga tegishli va servis uchun faqat o'qish uchun ochiq
 # (ProtectSystem=strict): servis o'z kodini o'zgartira olmaydi.
 set -euo pipefail
 
-APP_DIR=/opt/admin-bff
+APP_DIR=/srv/admin-bff
 CREDENTIALS=/etc/admin-bff/credentials
 UV=${UV:-/usr/local/bin/uv}
 

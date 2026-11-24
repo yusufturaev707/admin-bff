@@ -549,7 +549,7 @@ Bitta tizim ishlamay qolsa ham adminka ishlashda davom etadi. Tashqariga faqat N
 
 - **Docker ishlatilmaydi.** BFF systemd servisi sifatida ishlaydi.
 - **Joylashuv:**
-  - kod `/opt/admin-bff`'da turadi;
+  - kod `/srv/admin-bff`'da turadi;
   - virtualenv `uv sync --frozen --no-dev` bilan yaratiladi;
   - config `/etc/admin-bff/`'da, loglar journald'da.
 - **Alohida tizim user'i.** Servis login shell'siz `admin-bff` user'i nomidan ishlaydi. U hech qachon root bo'lib ishga tushmaydi.

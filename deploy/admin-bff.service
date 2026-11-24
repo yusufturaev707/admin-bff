@@ -24,7 +24,7 @@
 
 [Unit]
 Description=UZBMB Admin BFF
-Documentation=file:///opt/admin-bff/README.md
+Documentation=file:///srv/admin-bff/README.md
 # Sessiya Redis'i alohida instans (admin-bff-redis.service), serverdagi
 # boshqa tizimlarning redis-server.service'i emas.
 After=network-online.target postgresql.service admin-bff-redis.service
@@ -35,7 +35,7 @@ Type=notify
 NotifyAccess=main
 User=admin-bff
 Group=admin-bff
-WorkingDirectory=/opt/admin-bff
+WorkingDirectory=/srv/admin-bff
 
 # Oddiy (secret bo'lmagan) sozlamalar.
 EnvironmentFile=/etc/admin-bff/admin-bff.env
@@ -54,7 +54,7 @@ LoadCredential=db_password:/etc/admin-bff/credentials/db_password
 LoadCredential=redis_password:/etc/admin-bff/credentials/redis_password
 LoadCredential=pinfl_hmac_key:/etc/admin-bff/credentials/pinfl_hmac_key
 
-ExecStart=/opt/admin-bff/.venv/bin/gunicorn --config /opt/admin-bff/deploy/gunicorn.conf.py "app.main:create_app()"
+ExecStart=/srv/admin-bff/.venv/bin/gunicorn --config /srv/admin-bff/deploy/gunicorn.conf.py "app.main:create_app()"
 # HUP: Gunicorn worker'larni yangi kod bilan navbatma-navbat qayta ishga tushiradi.
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed

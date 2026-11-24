@@ -189,7 +189,7 @@ servisning sozlamalari va credential'lari bilan root sifatida ishlaydi (xuddi
 `deploy.sh` kabi):
 
 ```bash
-sudo sh -c 'set -a; . /etc/admin-bff/admin-bff.env; set +a; cd /opt/admin-bff &&
+sudo sh -c 'set -a; . /etc/admin-bff/admin-bff.env; set +a; cd /srv/admin-bff &&
   APP_ENV=production CREDENTIALS_DIRECTORY=/etc/admin-bff/credentials \
   .venv/bin/python -m scripts.create_superadmin --username <login>'
 ```
@@ -243,7 +243,7 @@ tushishda o'z huquqlarini tekshiradi. Agar u audit log'ni o'zgartira olsa
 Yangilash:
 
 ```bash
-sudo /opt/admin-bff/deploy/deploy.sh
+sudo /srv/admin-bff/deploy/deploy.sh
 ```
 
 ## Kalitlar

@@ -95,8 +95,8 @@ useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin admin-bff-red
 usermod -aG admin-bff www-data           # Nginx BFF socket'iga guruh orqali kiradi
 usermod -aG admin-bff-redis admin-bff    # BFF o'z Redis socket'iga kiradi
 
-git clone https://github.com/yusufturaev707/admin-bff.git /opt/admin-bff
-cd /opt/admin-bff
+git clone https://github.com/yusufturaev707/admin-bff.git /srv/admin-bff
+cd /srv/admin-bff
 UV_PYTHON_DOWNLOADS=never uv sync --frozen --no-dev --compile-bytecode
 ```
 
@@ -209,9 +209,9 @@ kim o'ziga permission yozib qo'ya oladi. BFF'ning instansi faqat unix socket'da
 ishlaydi va parol talab qiladi.
 
 ```bash
-install -m 0640 -o root -g admin-bff-redis /opt/admin-bff/deploy/admin-bff-redis.conf /etc/admin-bff/redis.conf
+install -m 0640 -o root -g admin-bff-redis /srv/admin-bff/deploy/admin-bff-redis.conf /etc/admin-bff/redis.conf
 printf 'requirepass %s\n' "$(cat /etc/admin-bff/credentials/redis_password)" >> /etc/admin-bff/redis.conf
-cp /opt/admin-bff/deploy/admin-bff-redis.service /etc/systemd/system/
+cp /srv/admin-bff/deploy/admin-bff-redis.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now admin-bff-redis
 systemctl status admin-bff-redis --no-pager
@@ -225,7 +225,7 @@ serverga tegishli sozlama, uni proktoring bilan kelishmasdan o'zgartirmang.
 ## 7. Sozlamalar
 
 ```bash
-install -m 0640 -o root -g root /opt/admin-bff/deploy/admin-bff.env.example /etc/admin-bff/admin-bff.env
+install -m 0640 -o root -g root /srv/admin-bff/deploy/admin-bff.env.example /etc/admin-bff/admin-bff.env
 nano /etc/admin-bff/admin-bff.env
 ```
 
@@ -238,12 +238,12 @@ Tekshiriladigan qiymatlar:
 ## 8. Migratsiyalar va servis
 
 ```bash
-cd /opt/admin-bff
+cd /srv/admin-bff
 ( set -a; . /etc/admin-bff/admin-bff.env; set +a
   APP_ENV=production CREDENTIALS_DIRECTORY=/etc/admin-bff/credentials \
   .venv/bin/alembic upgrade head )
 
-cp /opt/admin-bff/deploy/admin-bff.service /etc/systemd/system/
+cp /srv/admin-bff/deploy/admin-bff.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now admin-bff
 systemctl status admin-bff --no-pager
@@ -261,7 +261,7 @@ ko'rinadi. Ko'p uchraydigan sabablar:
 ## 9. Birinchi superadmin
 
 ```bash
-cd /opt/admin-bff
+cd /srv/admin-bff
 ( set -a; . /etc/admin-bff/admin-bff.env; set +a
   APP_ENV=production CREDENTIALS_DIRECTORY=/etc/admin-bff/credentials \
   .venv/bin/python -m scripts.create_superadmin --username <login> )
@@ -274,13 +274,13 @@ Parol ikki marta so'raladi. Superadmin birinchi kirishda parolini almashtiradi.
 Proktoringning saytlari o'zgarmaydi, BFF uchun yangi server bloklari qo'shiladi.
 
 ```bash
-cp /opt/admin-bff/deploy/nginx/admin-allowlist.conf /etc/nginx/snippets/
+cp /srv/admin-bff/deploy/nginx/admin-allowlist.conf /etc/nginx/snippets/
 nano /etc/nginx/snippets/admin-allowlist.conf    # allow <diapazon>; ... deny all;
 
 install -d -m 0750 /etc/nginx/tls/admin-api.uzbmb.uz
 # fullchain.pem va privkey.pem shu papkaga (privkey.pem: root:root 0600)
 
-cp /opt/admin-bff/deploy/nginx/admin-api.conf /opt/admin-bff/deploy/nginx/admin-bff-internal.conf \
+cp /srv/admin-bff/deploy/nginx/admin-api.conf /srv/admin-bff/deploy/nginx/admin-bff-internal.conf \
   /etc/nginx/sites-available/
 # Domen boshqa bo'lsa: admin-api.conf'da server_name va sertifikat yo'llari.
 ln -s /etc/nginx/sites-available/admin-api.conf /etc/nginx/sites-enabled/
@@ -311,7 +311,7 @@ Allowlist'dagi admin kompyuteridan tekshiriladi:
 ## 12. Keyingi yangilashlar
 
 ```bash
-sudo /opt/admin-bff/deploy/deploy.sh
+sudo /srv/admin-bff/deploy/deploy.sh
 ```
 
 Skript `git pull`, `uv sync`, migratsiyalar, `systemctl reload admin-bff`
@@ -320,7 +320,7 @@ Skript `git pull`, `uv sync`, migratsiyalar, `systemctl reload admin-bff`
 Orqaga qaytarish:
 
 ```bash
-cd /opt/admin-bff && git checkout <oldingi_commit>
+cd /srv/admin-bff && git checkout <oldingi_commit>
 UV_PYTHON_DOWNLOADS=never uv sync --frozen --no-dev --compile-bytecode
 systemctl reload admin-bff
 ```
