@@ -40,6 +40,11 @@ forwarded_allow_ips = "*"
 # Heartbeat files on tmpfs (the code directory is read-only under systemd).
 worker_tmp_dir = "/run/admin-bff"
 
+# Gunicorn 25.1+ opens a control socket for `gunicornc` (worker count,
+# shutdown) in $HOME/.gunicorn by default. The service has no home and a
+# read-only file system, and nothing uses it: one interface less.
+control_socket_disable = True
+
 # The application writes its own JSON access log; Gunicorn's is disabled.
 accesslog = None
 errorlog = "-"

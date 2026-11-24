@@ -92,6 +92,7 @@ def test_gunicorn_uses_uvicorn_worker_and_cleans_metric_files(
     config = runpy.run_path(str(ROOT / "deploy" / "gunicorn.conf.py"))
     assert config["worker_class"] == "uvicorn_worker.UvicornWorker"
     assert config["bind"] == "unix:/run/admin-bff/bff.sock"
+    assert config["control_socket_disable"] is True
 
     directory = tmp_path / "prometheus"
     directory.mkdir()
