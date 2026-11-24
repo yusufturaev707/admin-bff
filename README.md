@@ -18,19 +18,21 @@ Frontend uchun qo'llanma: [`docs/frontend.md`](docs/frontend.md), xavfsizlik:
 Dependency'lar faqat `pyproject.toml` va `uv.lock`da, ular `uv sync` bilan
 o'rnatiladi. `requirements.txt` yo'q.
 
-Server: **Debian 12 (bookworm)**, boshqa tizim (proktoring) bilan umumiy.
+Server: **Ubuntu 22.04 LTS (jammy)**, boshqa loyihalar bilan umumiy. Uning
+standart xavfsizlik yangilanishlari 2027-yil bahorida tugaydi (`docs/deploy.md`
+boshida).
 Serverga o'rnatish tartibi: [`docs/deploy.md`](docs/deploy.md). Qisqacha:
 
 - PostgreSQL: alohida DB serverida (16+), ulanish TLS bilan va sertifikat
-  tekshiriladi (`DB_SSLMODE=verify-full`). BFF serveridagi PostgreSQL 15
-  boshqa tizimniki, unga tegilmaydi.
-- Redis: Debian'niki 7.0, mos keladi. BFF o'z instansini ishlatadi
-  (`deploy/admin-bff-redis.service`), boshqa tizimning Redis'iga tegmaydi.
-- nginx 1.22: `http2 on;` yo'q (u 1.25.1'dan beri), HTTP/2 yoqilmagan
-  (`deploy/nginx/admin-api.conf` boshidagi izoh).
+  tekshiriladi (`DB_SSLMODE=verify-full`). BFF serverida PostgreSQL kerak emas.
+- Redis 7.4: Ubuntu'niki 6.0, mos kelmaydi. BFF'ning Redis'i manbadan
+  yig'iladi (`/opt/admin-bff-redis`) va alohida instans sifatida ishlaydi
+  (`deploy/admin-bff-redis.service`). Serverdagi boshqa Redis'larga tegilmaydi.
+- nginx 1.18 (Ubuntu'niki): `http2 on;` yo'q (u 1.25.1'dan beri), HTTP/2
+  yoqilmagan (`deploy/nginx/admin-api.conf` boshidagi izoh).
 
-**Python 3.12 serverga alohida o'rnatiladi:** Debian 12'ning o'z Python'i
-3.11, unga boshqa loyihalar bog'langan va u o'zgartirilmaydi.
+**Python 3.12 serverga alohida o'rnatiladi:** Ubuntu 22.04'ning o'z Python'i
+3.10, unga tizim va boshqa loyihalar bog'langan va u o'zgartirilmaydi.
 `deploy.sh` Python'ni internetdan yuklamaydi
 (`UV_PYTHON_DOWNLOADS=never`), uni tizimda `python3.12` nomi bilan qidiradi,
 masalan `/usr/local/bin/python3.12` (manbadan `make altinstall`). Python
@@ -167,7 +169,7 @@ testga va repo'ga yozilmaydi. Ular:
 - `pinfl_hmac_key`: OneID'da PINFL bo'yicha qidirish kaliti;
 - keyingi bosqichlarda `jwt_private_key` va `oneid_client_secret`.
 
-## Deploy (Debian, systemd, Docker'siz)
+## Deploy (Ubuntu, systemd, Docker'siz)
 
 Fayllar `deploy/` papkasida:
 
@@ -176,7 +178,7 @@ Fayllar `deploy/` papkasida:
 | `admin-bff.service` | systemd unit (hardening, `LoadCredential=`, unix socket) |
 | `gunicorn.conf.py` | Gunicorn + `uvicorn_worker.UvicornWorker`, `/run/admin-bff/bff.sock`, Prometheus multiprocess fayllari |
 | `admin-bff.env.example` | `/etc/admin-bff/admin-bff.env` namunasi |
-| `admin-bff-redis.service`, `admin-bff-redis.conf` | BFF'ning alohida sessiya Redis'i (faqat unix socket, `requirepass`) |
+| `admin-bff-redis.service`, `admin-bff-redis.conf` | BFF'ning alohida sessiya Redis'i: manbadan yig'ilgan 7.4, `/opt/admin-bff-redis` (faqat unix socket, `requirepass`) |
 | `nginx/admin-api.conf` | API server bloki: TLS, HSTS, rate limit, SSE, `/internal/` yopiq |
 | `nginx/admin-frontend.conf` | frontend server bloki |
 | `nginx/admin-bff-internal.conf` | faqat `127.0.0.1`: JWKS va `/metrics` |

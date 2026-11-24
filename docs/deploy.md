@@ -1,42 +1,54 @@
-# Serverga o'rnatish (Debian 12)
+# Serverga o'rnatish (Ubuntu 22.04)
 
-Bu hujjat Admin BFF'ni Debian 12 (bookworm) serveriga birinchi marta
+Bu hujjat Admin BFF'ni Ubuntu 22.04 LTS (jammy) serveriga birinchi marta
 o'rnatish tartibi. Keyingi yangilashlar uchun `deploy/deploy.sh` ishlatiladi
-(oxirgi bo'lim).
+(12-bo'lim).
+
+> **Ubuntu 22.04'ning standart xavfsizlik yangilanishlari 2027-yil bahorida
+> tugaydi.** Undan keyin yangilanishlar faqat Ubuntu Pro bilan keladi. Server
+> 24.04'ga o'tkazilganda 1- va 6-qadamlar qayta ko'rib chiqiladi: 24.04'da
+> Python 3.12 tizimning o'zida bor.
 
 Ikkita server ishtirok etadi:
 
-- **BFF serveri:** BFF, uning Redis'i va Nginx. Bu server boshqa tizim
-  (proktoring) bilan umumiy.
+- **BFF serveri:** BFF, uning Redis'i va Nginx. Bu serverda boshqa loyihalar
+  ham ishlaydi.
 - **DB serveri:** BFF'ning PostgreSQL bazasi. BFF unga tarmoq orqali TLS bilan
   ulanadi (5-qadam). Bu serverda boshqa bazalar ham bo'lishi mumkin.
 
 Ikkala server ham umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
 
-- **Boshqa tizimlarning servislariga tegilmaydi.** BFF serveridagi
-  `redis-server.service`, PostgreSQL 15 klasteri va mavjud Nginx saytlari
-  o'zgartirilmaydi va qayta ishga tushirilmaydi. BFF o'z Redis instansini
-  ishlatadi. DB serverida faqat yangi rollar, yangi baza va `pg_hba.conf`ga
+- **Boshqa loyihalarning servislariga tegilmaydi.** BFF serveridagi Redis,
+  PostgreSQL, Nginx saytlari va boshqa servislar o'zgartirilmaydi va qayta
+  ishga tushirilmaydi. BFF'ning Python'i va Redis'i tizim paketlaridan alohida
+  o'rnatiladi (1- va 6-qadamlar), shuning uchun boshqa loyihalarning paketlari
+  yangilanmaydi. DB serverida faqat yangi rollar, yangi baza va `pg_hba.conf`ga
   qatorlar qo'shiladi.
 - **Faqat aniq servislar boshqariladi.** `systemctl restart nginx`,
   `systemctl restart postgresql` va `systemctl restart redis-server` buyruqlari
   ishlatilmaydi. Nginx faqat `nginx -t`dan keyin `reload` qilinadi. DB serverida
   o'zgarishlar `pg_reload_conf()` bilan o'qiladi, PostgreSQL qayta ishga
   tushirilmaydi.
-- **Og'ir ishlar imtihon smenasidan tashqarida qilinadi.** Bu Python'ni yig'ish
-  (1-qadam).
+- **apt servislarni o'zi qayta ishga tushirmaydi.** Ubuntu 22.04'da
+  `apt install`dan keyin `needrestart` ishlaydi. U kutubxonasi yangilangan
+  servislarni qayta ishga tushirishni taklif qiladi, ular orasida boshqa
+  loyihalarniki ham bo'ladi. Shuning uchun bu hujjatdagi har bir `apt` buyrug'i
+  `NEEDRESTART_MODE=l` bilan bajariladi: needrestart faqat ro'yxatni
+  ko'rsatadi. `apt upgrade` deploy'ning qismi emas.
+- **Og'ir ishlar serverdagi boshqa loyihalar kam yuklangan vaqtda qilinadi.**
+  Bu Python va Redis'ni yig'ish (1- va 6-qadamlar). Ular `nice -n 19` bilan va
+  yadrolarning yarmida ishlaydi.
 - **UFW o'zgartirilmaydi.** BFF yangi port ochmaydi: tashqaridan unga faqat
-  mavjud Nginx'ning 443-porti orqali kiriladi. Proktoringning portlarini bilmasdan
-  UFW'ni yoqish yoki o'zgartirish uni ishdan chiqarishi mumkin.
-- **Hamma buyruqlar root sifatida, `su -` yoki `sudo -i` bilan.** Oddiy `su`
-  `PATH`ga `/usr/sbin`ni qo'shmaydi, shunda `nginx` va `useradd` topilmaydi.
+  Nginx'ning 443-porti orqali kiriladi. Boshqa loyihalarning portlarini
+  bilmasdan UFW'ni yoqish yoki o'zgartirish ularni ishdan chiqarishi mumkin.
+- **Hamma buyruqlar root sifatida, `sudo -i` bilan bajariladi.**
 
 ## 0. Oldindan kerak bo'ladigan ma'lumotlar
 
 - Domenlar. Configlarda namuna sifatida `admin.uzbmb.uz` va `admin-api.uzbmb.uz`
   turibdi (10-bo'lim).
-- Shu domenlar uchun TLS sertifikati va kaliti. Proktoringda `*.uzbmb.uz`
-  wildcard sertifikati bo'lsa, o'shani ishlatish mumkin.
+- Shu domenlar uchun TLS sertifikati va kaliti. Serverda boshqa loyihaning
+  `*.uzbmb.uz` wildcard sertifikati bo'lsa, o'shani ishlatish mumkin.
 - IP allowlist: adminlar kompyuterlarining IP diapazonlari. Ro'yxat bo'sh
   bo'lsa, Nginx hammani rad etadi.
 - Adminlar kompyuterlarining `hosts` fayli:
@@ -46,27 +58,51 @@ Ikkala server ham umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
   - unda root huquqi;
   - PostgreSQL versiyasi 16 yoki undan yangi (lokal testlar 17'da o'tadi).
 
-BFF serverida tekshirib oling:
+BFF serverida tekshirib oling. Bu buyruqlar hech narsani o'zgartirmaydi:
 
 ```bash
+lsb_release -ds; systemctl --version | head -1; openssl version
+nproc; free -h; df -h /srv /opt /usr/local
+ss -ltnp | grep -E ':(80|443|8081)\b'          # 80 va 443 kimda; 8081 bo'sh bo'lishi kerak
+nginx -v                                         # nginx bormi va versiyasi
 grep -n "include" /etc/nginx/nginx.conf          # sites-enabled/* ulanganmi
 grep -rn "listen" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/
-ss -ltnp | grep -E ':8081\b'                   # bo'sh bo'lishi kerak
 ```
 
-Agar proktoring `listen 10.x.x.x:443 ssl;` kabi aniq IP bilan tinglasa,
-BFF'ning server bloklarida ham `listen` xuddi shu ko'rinishda bo'lishi kerak.
-Aks holda nginx shu IP'ga kelgan so'rovlarni proktoringning server blokiga
-yuboradi.
+Natijaga qarab:
+
+- **80 va 443-portlar.** Ularni nginx'dan boshqa dastur (`apache2`, `caddy` va
+  boshqalar) egallagan bo'lsa, davom etilmaydi: BFF'ning config'lari nginx
+  uchun yozilgan.
+- **nginx o'rnatilmagan bo'lsa** (80 va 443 ham bo'sh), Ubuntu'niki
+  o'rnatiladi. Uning namuna sayti o'chiriladi, chunki u 80-portda
+  "Welcome to nginx" sahifasini ko'rsatadi:
+
+  ```bash
+  NEEDRESTART_MODE=l apt install -y nginx
+  rm /etc/nginx/sites-enabled/default && nginx -t && systemctl reload nginx
+  ```
+
+- **nginx versiyasi.** Ubuntu 22.04'niki 1.18, unda HTTP/2 yoqilmaydi
+  (`deploy/nginx/admin-api.conf` boshidagi izoh). nginx.org repo'sidan 1.25.1
+  yoki yangisi o'rnatilgan bo'lsa, HTTP/2 `http2 on;` bilan yoqiladi.
+- **Aniq IP bilan `listen`.** Boshqa loyiha `listen 10.x.x.x:443 ssl;` kabi
+  aniq IP bilan tinglasa, BFF'ning server bloklarida ham `listen` xuddi shu
+  ko'rinishda bo'lishi kerak. Aks holda nginx shu IP'ga kelgan so'rovlarni o'sha
+  loyihaning server blokiga yuboradi.
+- **Disk.** `/usr/local`da kamida 3 GB bo'sh joy kerak: Python va Redis
+  manbalari va ularni yig'ish.
 
 ## 1. Python 3.12
 
-Tizimning o'z `python3` (3.11) buyrug'i o'zgarmaydi: `make altinstall` faqat
-`/usr/local/bin/python3.12`ni qo'shadi.
+Ubuntu 22.04'ning o'z `python3` buyrug'i 3.10. Unga tizimning o'zi (apt,
+netplan, cloud-init) va boshqa loyihalar bog'langan, u o'zgarmaydi. Ubuntu
+22.04 repo'larida Python 3.12 yo'q. deadsnakes PPA'si Ubuntu'ning rasmiy
+repo'si emas, shuning uchun Python manbadan yig'iladi.
 
 ```bash
-apt install -y build-essential pkg-config libssl-dev zlib1g-dev libbz2-dev \
-  libreadline-dev libsqlite3-dev libffi-dev liblzma-dev libncurses-dev \
+NEEDRESTART_MODE=l apt install -y build-essential pkg-config libssl-dev zlib1g-dev \
+  libbz2-dev libreadline-dev libsqlite3-dev libffi-dev liblzma-dev libncurses-dev \
   libgdbm-dev tk-dev uuid-dev xz-utils gnupg dirmngr curl git
 
 cd /usr/local/src
@@ -77,18 +113,25 @@ gpg --verify Python-3.12.16.tar.xz.asc Python-3.12.16.tar.xz   # "Good signature
 
 tar xf Python-3.12.16.tar.xz && cd Python-3.12.16
 ./configure --enable-optimizations --with-lto
-nice -n 19 make -j8          # 15–30 daqiqa
+J=$(( ($(nproc) + 1) / 2 ))  # yadrolarning yarmi
+nice -n 19 make -j"$J"       # 20–60 daqiqa
 make altinstall              # "make install" EMAS
 
-python3 -V                   # Python 3.11.2, o'zgarmagan
-python3.12 -c "import ssl, ctypes, sqlite3, lzma; print(ssl.OPENSSL_VERSION)"
+python3 -V                   # Python 3.10.x, o'zgarmagan
+python3.12 -c "import ssl, ctypes, sqlite3, lzma; print(ssl.OPENSSL_VERSION)"   # OpenSSL 3.0.x
 ```
+
+`make install` ishlatilmaydi: u `/usr/local/bin/python3`ni ham yozadi, `PATH`da
+esa `/usr/local/bin` `/usr/bin`dan oldin turadi. Shunda tizimning va boshqa
+loyihalarning `python3` buyrug'i 3.12'ga almashib qoladi. `make altinstall`
+faqat `/usr/local/bin/python3.12`ni qo'shadi.
 
 `make` oxirida "necessary bits ... were not found" ro'yxatida `_ssl`,
 `_ctypes`, `_sqlite3`, `_lzma` bo'lmasligi kerak.
 
 Python `/root` yoki boshqa uy papkasiga o'rnatilmaydi: servis `ProtectHome=yes`
-bilan ishlaydi va u yerni ko'rmaydi.
+bilan ishlaydi va u yerni ko'rmaydi. U `apt` orqali yangilanmaydi, xavfsizlik
+yangilanishlari 12-bo'limda.
 
 ## 2. uv
 
@@ -111,6 +154,8 @@ usermod -aG admin-bff-redis admin-bff    # BFF o'z Redis socket'iga kiradi
 git clone https://github.com/yusufturaev707/admin-bff.git /srv/admin-bff
 cd /srv/admin-bff
 UV_PYTHON_DOWNLOADS=never uv sync --frozen --no-dev --compile-bytecode
+.venv/bin/python -V                      # Python 3.12.16
+readlink -f .venv/bin/python             # /usr/local/bin/python3.12
 ```
 
 Kod root'ga tegishli bo'lib qoladi, servis uni faqat o'qiydi. Repo yopiq
@@ -172,7 +217,7 @@ BFF ikki narsani tekshiradi:
 **DB serverida tashkilot CA'si imzolagan sertifikat bo'lsa,** shu CA'ning
 sertifikatini 5.5-qadamda BFF serveriga qo'ying va 5.3-qadamga o'ting.
 
-**Bo'lmasa** (masalan, Debian'ning `ssl-cert-snakeoil` sertifikati), BFF
+**Bo'lmasa** (masalan, Debian yoki Ubuntu'ning `ssl-cert-snakeoil` sertifikati), BFF
 ulanishi uchun alohida CA va server sertifikati yaratiladi. `<DB_IP>` o'rniga
 DB serverining ichki IP manzili yoziladi:
 
@@ -305,12 +350,51 @@ openssl s_client -starttls postgres -connect <DB_IP>:5432 \
 - sertifikatdagi IP `<DB_IP>` bilan mos emas;
 - tarmoq yoki firewall ulanishni o'tkazmayapti.
 
-## 6. Redis (BFF'ning o'z instansi)
+## 6. Redis 7.4 (BFF'ning o'z instansi)
 
-Serverdagi `redis-server.service` boshqa tizimniki. BFF sessiyalari, principal
+Serverdagi Redis (bo'lsa) boshqa loyihalarniki. BFF sessiyalari, principal
 keshi va bloklash hisoblagichlari unda saqlanmaydi: bu Redis'ga yoza olgan har
 kim o'ziga permission yozib qo'ya oladi. BFF'ning instansi faqat unix socket'da
 ishlaydi va parol talab qiladi.
+
+Redis ham manbadan yig'iladi:
+
+- Ubuntu 22.04'ning `redis-server` paketi 6.0. U stack talabiga (Redis 7) mos
+  emas va Redis'ning o'zi uni endi qo'llab-quvvatlamaydi.
+- Redis'ning o'z apt repo'si (packages.redis.io) serverdagi `redis-server`
+  paketini almashtiradi, ya'ni boshqa loyihalarning Redis'ini ham yangilab,
+  qayta ishga tushiradi.
+
+Yig'ilgan Redis `/opt/admin-bff-redis`ga o'rnatiladi. U tizim paketlariga ham,
+`PATH`ga ham aralashmaydi: boshqa loyihalarning `redis-server` va `redis-cli`
+buyruqlari o'zgarmaydi.
+
+`V`: 7.4 qatoridagi eng oxirgi versiya, ro'yxati
+https://download.redis.io/releases/ sahifasida. Bu hujjat yozilganda
+(2026-yil noyabr) u 7.4.12 edi.
+
+```bash
+NEEDRESTART_MODE=l apt install -y build-essential pkg-config libsystemd-dev curl
+
+cd /usr/local/src
+V=7.4.12
+curl -fLO https://download.redis.io/releases/redis-$V.tar.gz
+curl -fsSL https://raw.githubusercontent.com/redis/redis-hashes/master/README -o redis-hashes.txt
+grep " redis-$V.tar.gz " redis-hashes.txt | awk '{print $4 "  " $2}' | sha256sum -c   # redis-7.4.12.tar.gz: OK
+
+tar xzf redis-$V.tar.gz && cd redis-$V
+J=$(( ($(nproc) + 1) / 2 ))
+nice -n 19 make -j"$J" USE_SYSTEMD=yes
+make install PREFIX=/opt/admin-bff-redis USE_SYSTEMD=yes
+/opt/admin-bff-redis/bin/redis-server --version   # Redis server v=7.4.12 ...
+```
+
+- **`sha256sum` `OK` demasa** yoki "no properly formatted checksum lines"
+  desa, davom etilmaydi: fayl buzilgan yoki versiya noto'g'ri yozilgan.
+- **`USE_SYSTEMD=yes`** servis `Type=notify` bilan ishlashi uchun kerak: Redis
+  tayyor bo'lganini systemd'ga o'zi xabar qiladi.
+
+Instansni sozlash va ishga tushirish:
 
 ```bash
 install -m 0640 -o root -g admin-bff-redis /srv/admin-bff/deploy/admin-bff-redis.conf /etc/admin-bff/redis.conf
@@ -319,12 +403,13 @@ cp /srv/admin-bff/deploy/admin-bff-redis.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now admin-bff-redis
 systemctl status admin-bff-redis --no-pager
-ls -l /run/admin-bff-redis/                       # srwxrwx--- admin-bff-redis admin-bff-redis redis.sock
-redis-cli -s /run/admin-bff-redis/redis.sock ping # "NOAUTH Authentication required" (parol ishlayapti)
+ls -l /run/admin-bff-redis/      # srwxrwx--- admin-bff-redis admin-bff-redis redis.sock
+/opt/admin-bff-redis/bin/redis-cli -s /run/admin-bff-redis/redis.sock ping   # "NOAUTH Authentication required" (parol ishlayapti)
 ```
 
 Log'da `vm.overcommit_memory` haqida ogohlantirish chiqishi mumkin. Bu butun
-serverga tegishli sozlama, uni proktoring bilan kelishmasdan o'zgartirmang.
+serverga tegishli sozlama, uni boshqa loyihalar bilan kelishmasdan
+o'zgartirmang.
 
 ## 7. Sozlamalar
 
@@ -384,7 +469,8 @@ Parol ikki marta so'raladi. Superadmin birinchi kirishda parolini almashtiradi.
 
 ## 10. Nginx
 
-Proktoringning saytlari o'zgarmaydi, BFF uchun yangi server bloklari qo'shiladi.
+Boshqa loyihalarning saytlari o'zgarmaydi, BFF uchun yangi server bloklari
+qo'shiladi.
 
 ```bash
 cp /srv/admin-bff/deploy/nginx/admin-allowlist.conf /etc/nginx/snippets/
@@ -402,7 +488,7 @@ ln -s /etc/nginx/sites-available/admin-bff-internal.conf /etc/nginx/sites-enable
 nginx -t && systemctl reload nginx
 ```
 
-`nginx -t` xato bersa, `reload` qilinmaydi va proktoring eski config bilan
+`nginx -t` xato bersa, `reload` qilinmaydi va boshqa saytlar eski config bilan
 ishlashda davom etadi. Xatoni tuzatib, qaytadan `nginx -t` qilinadi.
 
 Frontend build'i tayyor bo'lganda `admin-frontend.conf` xuddi shu tarzda
@@ -441,6 +527,27 @@ systemctl reload admin-bff
 Yangi versiya migratsiya qo'shgan bo'lsa, eski kod yangi sxema bilan ishga
 tushmaydi. Unda `alembic downgrade`dan oldin DB serverida bazaning nusxasi
 olinadi: `runuser -u postgres -- pg_dump -Fc admin_bff > /root/admin_bff.dump`.
+
+### Python va Redis'ning xavfsizlik yangilanishlari
+
+Ikkalasi ham manbadan yig'ilgan, shuning uchun `apt` ularni yangilamaydi.
+Yangi versiyalar oyiga bir marta tekshiriladi: Python 3.12 uchun
+https://www.python.org/downloads/, Redis 7.4 uchun
+https://github.com/redis/redis/releases.
+
+- **Python.** 1-qadam yangi versiya raqami bilan takrorlanadi. `make altinstall`
+  `/usr/local/bin/python3.12`ni almashtiradi, `.venv` esa shu faylga bog'langan.
+  Keyin `systemctl restart admin-bff` qilinadi. `reload` yetmaydi, chunki
+  Gunicorn'ning asosiy jarayoni eski interpreter bilan qoladi. Sessiyalar
+  Redis'da, ular uzilmaydi.
+- **Redis.** 6-qadamdagi yig'ish yangi `V` bilan takrorlanadi: `make install`
+  `/opt/admin-bff-redis/bin`ni almashtiradi. Keyin
+  `systemctl restart admin-bff-redis` qilinadi. Redis to'xtashda ma'lumotlarini
+  `dump.rdb`ga yozadi, shuning uchun sessiyalar saqlanib qoladi. Qayta ishga
+  tushish paytidagi bir-ikki soniyada BFF so'rovlarga xato qaytarishi mumkin.
+
+Eski manba papkalari (`/usr/local/src/Python-*`, `/usr/local/src/redis-*`)
+keyin o'chiriladi.
 
 ## Hozircha yo'q
 

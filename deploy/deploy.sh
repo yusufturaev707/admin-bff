@@ -17,8 +17,8 @@ git pull --ff-only
 
 echo "==> uv sync"
 # --compile-bytecode: kod papkasi read-only, .pyc oldindan yaratiladi.
-# Python 3.12 (.python-version). Debian 12'da u paket sifatida yo'q (tizimniki
-# 3.11), serverga alohida o'rnatiladi: /usr/local/bin/python3.12 (docs/deploy.md).
+# Python 3.12 (.python-version). Ubuntu 22.04'da u paket sifatida yo'q (tizimniki
+# 3.10), serverga alohida o'rnatiladi: /usr/local/bin/python3.12 (docs/deploy.md).
 # Ichki tarmoqda tashqi yuklab olish yopiq, shuning uchun uv Python'ni
 # hech qachon internetdan yuklamaydi: tizimda topilmasa, xato beradi.
 UV_PYTHON_DOWNLOADS=never "$UV" sync --frozen --no-dev --compile-bytecode

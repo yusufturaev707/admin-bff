@@ -1,7 +1,9 @@
 # /etc/systemd/system/admin-bff-redis.service - BFF sessiya Redis'i
 #
-# Serverdagi asosiy redis-server.service'ga (boshqa tizimlarniki) tegmaydi:
-# o'z config'i (/etc/admin-bff/redis.conf), o'z user'i, o'z socket'i.
+# Redis 7.4 manbadan yig'ilgan va /opt/admin-bff-redis'da turadi: Ubuntu
+# 22.04'ning redis-server paketi 6.0. Serverdagi boshqa loyihalarning
+# redis-server.service'iga tegmaydi: o'z binary'si, o'z config'i
+# (/etc/admin-bff/redis.conf), o'z user'i, o'z socket'i.
 # O'rnatish: docs/deploy.md.
 
 [Unit]
@@ -11,7 +13,7 @@ Before=admin-bff.service
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/redis-server /etc/admin-bff/redis.conf --supervised systemd --daemonize no
+ExecStart=/opt/admin-bff-redis/bin/redis-server /etc/admin-bff/redis.conf --supervised systemd --daemonize no
 User=admin-bff-redis
 Group=admin-bff-redis
 # /run/admin-bff-redis/redis.sock: guruh (admin-bff) kira oladi.
