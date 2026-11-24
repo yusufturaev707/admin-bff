@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
-from app.settings import Settings
+from app.settings import DB_VERIFYING_SSLMODES, Settings
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
@@ -63,26 +63,32 @@ def owner_database_url(settings: Settings) -> URL:
 
 
 def db_ssl_context(settings: Settings) -> ssl.SSLContext | None:
-    """TLS for the connection to PostgreSQL (DB_SSLMODE), None for disable.
+    """The verifying TLS context (verify-ca, verify-full), None otherwise.
 
     Both modes require a certificate signed by DB_SSLROOTCERT (or a system
     CA); verify-full also requires it to be issued for DB_HOST (a DNS name or
     an IP address in subjectAltName). The server refusing TLS is an error,
     never a silent fallback to plain text."""
-    if settings.db_sslmode == "disable":
+    if settings.db_tls_mode not in DB_VERIFYING_SSLMODES:
         return None
     context = ssl.create_default_context(cafile=settings.db_sslrootcert)
-    context.check_hostname = settings.db_sslmode == "verify-full"
+    context.check_hostname = settings.db_tls_mode == "verify-full"
     return context
 
 
 def ssl_connect_args(settings: Settings) -> dict[str, Any]:
-    """asyncpg `connect_args` for TLS; shared by the app and the migrations.
+    """asyncpg `connect_args` for TLS (`Settings.db_tls_mode`); shared by the
+    app and the migrations.
 
-    `disable` passes `ssl=False`: without it asyncpg would "prefer" TLS and
-    accept any certificate, which looks encrypted but is not verified."""
-    context = db_ssl_context(settings)
-    return {"ssl": False if context is None else context}
+    `disable` passes `ssl=False`, since asyncpg's own default for TCP is
+    "prefer". "prefer" is asyncpg's mode: TLS without a certificate check when
+    the server offers it, plain text when it does not."""
+    mode = settings.db_tls_mode
+    if mode == "disable":
+        return {"ssl": False}
+    if mode == "prefer":
+        return {"ssl": "prefer"}
+    return {"ssl": db_ssl_context(settings)}
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
@@ -121,6 +127,15 @@ async def database_revision(engine: AsyncEngine) -> str | None:
             return None
         revision = await conn.scalar(text("SELECT version_num FROM alembic_version"))
     return revision if isinstance(revision, str) else None
+
+
+async def connection_is_encrypted(engine: AsyncEngine) -> bool:
+    """Whether this connection to PostgreSQL uses TLS ("prefer" may fall back)."""
+    async with engine.connect() as conn:
+        encrypted = await conn.scalar(
+            text("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()")
+        )
+    return encrypted is True
 
 
 async def ping_database(engine: AsyncEngine) -> None:

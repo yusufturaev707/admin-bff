@@ -24,9 +24,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 AppEnv = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 LogFormat = Literal["json", "console"]
-# No "require"/"prefer": TLS without checking the certificate does not stop a
-# man in the middle, so only the verifying modes exist.
-DbSslMode = Literal["disable", "verify-ca", "verify-full"]
+# "prefer" (owner's decision 2026-11-24): TLS when the server offers it,
+# without checking the certificate, plain text when it does not. It stops
+# eavesdropping, not a man in the middle. The verify modes check the
+# certificate and never fall back to plain text.
+DbSslMode = Literal["disable", "prefer", "verify-ca", "verify-full"]
+DB_VERIFYING_SSLMODES = frozenset({"verify-ca", "verify-full"})
 
 _REDIS_PREFIX_RE = re.compile(r"^[A-Za-z0-9:_-]{0,64}$")
 
@@ -89,18 +92,18 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=10, ge=0, le=100)
     # Owner of the schema: runs the migrations and grants DB_USER its privileges
     # (app/core/db_privileges.py). DB_USER itself may then only SELECT and
-    # INSERT the audit tables (section 9). Unset: DB_USER owns everything,
-    # which only development accepts (production refuses to start).
-    # `db_owner_password` is a credential for deploy.sh only, never loaded
-    # into the service.
+    # INSERT the audit tables (section 9). Unset: DB_USER owns everything and
+    # the service only warns at startup (owner's decision 2026-11-24: one DB
+    # user in production). `db_owner_password` is a credential for deploy.sh
+    # only, never loaded into the service.
     db_owner_user: str | None = None
     db_owner_password: SecretStr | None = None
-    # TLS to a database on another server (app/core/db.py, db_ssl_context):
+    # TLS to the database (app/core/db.py, ssl_connect_args). Unset: "prefer"
+    # for a database on another host, "disable" on this one (`db_tls_mode`).
     # verify-full checks the certificate chain and that it was issued for
     # DB_HOST; verify-ca only the chain (e.g. a CA made for this database
-    # alone). DB_SSLROOTCERT is the CA file; unset means the system CAs.
-    # Production refuses an unencrypted connection to another host.
-    db_sslmode: DbSslMode = "disable"
+    # alone). DB_SSLROOTCERT is their CA file; unset means the system CAs.
+    db_sslmode: DbSslMode | None = None
     db_sslrootcert: str | None = None
 
     # Whole monthly audit partitions older than this are dropped (section 9).
@@ -216,19 +219,27 @@ class Settings(BaseSettings):
         """A unix socket directory or a loopback address: no network in between."""
         return db_host_is_local(self.db_host)
 
+    @property
+    def db_tls_mode(self) -> DbSslMode:
+        """DB_SSLMODE, or its default for DB_HOST when unset."""
+        if self.db_sslmode is not None:
+            return self.db_sslmode
+        return "disable" if self.db_is_local else "prefer"
+
     @model_validator(mode="after")
     def _validate_db_tls(self) -> "Settings":
-        if self.db_sslmode != "disable" and self.db_host.startswith("/"):
+        if self.db_sslmode not in (None, "disable") and self.db_host.startswith("/"):
             raise ValueError("DB_SSLMODE needs a TCP DB_HOST: a unix socket is never encrypted")
         if self.db_sslrootcert is not None:
-            if self.db_sslmode == "disable":
-                raise ValueError("DB_SSLROOTCERT is set, but DB_SSLMODE=disable")
+            # "prefer" ignores the CA: the file would only make it look checked.
+            if self.db_tls_mode not in DB_VERIFYING_SSLMODES:
+                raise ValueError("DB_SSLROOTCERT needs DB_SSLMODE=verify-full or verify-ca")
             if not os.path.isfile(self.db_sslrootcert):
                 raise ValueError(f"DB_SSLROOTCERT: no such file: {self.db_sslrootcert}")
         if self.is_production and not self.db_is_local and self.db_sslmode == "disable":
             raise ValueError(
-                "production requires DB_SSLMODE=verify-full or verify-ca "
-                "for a database on another host"
+                "production refuses DB_SSLMODE=disable for a database on another host "
+                "(leave it unset to use TLS when the server offers it)"
             )
         return self
 

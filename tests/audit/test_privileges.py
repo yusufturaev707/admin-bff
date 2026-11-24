@@ -175,14 +175,35 @@ async def test_the_owner_role_is_reported(settings: Settings) -> None:
         await engine.dispose()
 
 
-async def test_production_refuses_to_start_as_the_owner(settings: Settings) -> None:
+async def test_production_refuses_to_start_as_the_owner_with_two_roles(
+    settings: Settings,
+) -> None:
+    # DB_OWNER_USER is set, so the service role was meant to be restricted.
     production = settings.model_copy(
-        update={"app_env": "production", "argon2_time_cost": 2, "argon2_memory_cost_kib": 19456}
+        update={
+            "app_env": "production",
+            "argon2_time_cost": 2,
+            "argon2_memory_cost_kib": 19456,
+            "db_owner_user": "admin_bff_owner",
+        }
     )
     app = create_app(production)
     with pytest.raises(RuntimeError, match="can modify the audit log"):
         async with app.router.lifespan_context(app):
             pass
+
+
+async def test_production_with_one_role_only_warns(
+    settings: Settings, clock: FakeClock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Owner's decision (2026-11-24): one DB user for the migrations and the service.
+    production = settings.model_copy(
+        update={"app_env": "production", "argon2_time_cost": 2, "argon2_memory_cost_kib": 19456}
+    )
+    async with app_client(create_app(production, clock=clock)) as client:
+        assert (await client.get("/ready")).status_code == 200
+    # create_app configures logging itself, so the JSON lines are read from stdout.
+    assert '"event": "audit_privileges_too_broad"' in capsys.readouterr().out
 
 
 async def test_production_refuses_to_start_without_the_database(settings: Settings) -> None:

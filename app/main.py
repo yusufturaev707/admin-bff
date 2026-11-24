@@ -26,6 +26,7 @@ from app.auth.oneid import OneIdClient, build_oneid_client
 from app.auth.service import build_auth_service
 from app.core.body_limit import BodySizeLimitMiddleware
 from app.core.db import (
+    connection_is_encrypted,
     create_engine,
     create_sessionmaker,
     database_revision,
@@ -90,19 +91,29 @@ async def check_database(engine: AsyncEngine, settings: Settings) -> None:
     * the schema must be at the code's migration head, in every environment:
       an old schema only fails later, request by request, with a 500;
     * section 9: the service's DB role may only append to the audit log.
-      Production refuses to start otherwise; other environments only warn
-      (development usually runs everything as one role).
+      With two roles (DB_OWNER_USER set) production refuses to start
+      otherwise. With one role (owner's decision 2026-11-24, and usually in
+      development) it only warns: the audit log is then guarded by its
+      triggers and hash chain, which the table owner can get around;
+    * a database on another host reached without TLS (DB_SSLMODE=prefer fell
+      back to plain text) is logged as a warning.
 
     If the database cannot be reached, production refuses to start and other
     environments only warn (/ready reports it)."""
     try:
         revision = await database_revision(engine)
         problems = await audit_privilege_problems(engine)
+        encrypted = await connection_is_encrypted(engine)
     except Exception as exc:
         if settings.is_production:
             raise RuntimeError("cannot check the database at startup") from exc
         logger.warning("database_unchecked", error=type(exc).__name__)
         return
+    if not settings.db_is_local:
+        if encrypted:
+            logger.info("database_tls", encrypted=True)
+        else:
+            logger.warning("database_tls", encrypted=False, sslmode=settings.db_tls_mode)
     expected = migration_heads()
     if revision not in expected:
         raise RuntimeError(
@@ -111,7 +122,7 @@ async def check_database(engine: AsyncEngine, settings: Settings) -> None:
         )
     if not problems:
         return
-    if settings.is_production:
+    if settings.is_production and settings.db_owner_user is not None:
         raise RuntimeError(
             "the application DB role (DB_USER) can modify the audit log: "
             + "; ".join(problems)
