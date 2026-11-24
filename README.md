@@ -18,13 +18,19 @@ Frontend uchun qo'llanma: [`docs/frontend.md`](docs/frontend.md), xavfsizlik:
 Dependency'lar faqat `pyproject.toml` va `uv.lock`da, ular `uv sync` bilan
 o'rnatiladi. `requirements.txt` yo'q.
 
-Serverlar: **Debian 13 (trixie)**. Uning PostgreSQL 17 va nginx 1.26
-paketlari talablarga mos keladi. `http2 on;` sintaksisi nginx 1.25.1'dan beri
-ishlaydi. Redis versiyasini o'rnatishdan oldin `apt policy redis-server` bilan
-tekshiring, kamida 7 bo'lishi kerak.
+Server: **Debian 12 (bookworm)**, boshqa tizim (proktoring) bilan umumiy.
+Serverga o'rnatish tartibi: [`docs/deploy.md`](docs/deploy.md). Qisqacha:
 
-**Python 3.12 serverga alohida o'rnatiladi:** Debian 13'da faqat
-`python3.13` paketi bor. `deploy.sh` Python'ni internetdan yuklamaydi
+- PostgreSQL: Debian'ning o'zida 15-versiya, u boshqa tizimniki. BFF uchun
+  alohida PostgreSQL 17 klasteri (PGDG repo'si, port 5433) ishlatiladi.
+- Redis: Debian'niki 7.0, mos keladi. BFF o'z instansini ishlatadi
+  (`deploy/admin-bff-redis.service`), boshqa tizimning Redis'iga tegmaydi.
+- nginx 1.22: `http2 on;` yo'q (u 1.25.1'dan beri), HTTP/2 yoqilmagan
+  (`deploy/nginx/admin-api.conf` boshidagi izoh).
+
+**Python 3.12 serverga alohida o'rnatiladi:** Debian 12'ning o'z Python'i
+3.11, unga boshqa loyihalar bog'langan va u o'zgartirilmaydi.
+`deploy.sh` Python'ni internetdan yuklamaydi
 (`UV_PYTHON_DOWNLOADS=never`), uni tizimda `python3.12` nomi bilan qidiradi,
 masalan `/usr/local/bin/python3.12` (manbadan `make altinstall`). Python
 `/root` yoki boshqa uy papkasiga o'rnatilmasin: servis `ProtectHome=yes` bilan
@@ -167,13 +173,14 @@ Fayllar `deploy/` papkasida:
 | `admin-bff.service` | systemd unit (hardening, `LoadCredential=`, unix socket) |
 | `gunicorn.conf.py` | Gunicorn + `uvicorn_worker.UvicornWorker`, `/run/admin-bff/bff.sock`, Prometheus multiprocess fayllari |
 | `admin-bff.env.example` | `/etc/admin-bff/admin-bff.env` namunasi |
+| `admin-bff-redis.service`, `admin-bff-redis.conf` | BFF'ning alohida sessiya Redis'i (faqat unix socket, `requirepass`) |
 | `nginx/admin-api.conf` | API server bloki: TLS, HSTS, rate limit, SSE, `/internal/` yopiq |
 | `nginx/admin-frontend.conf` | frontend server bloki |
 | `nginx/admin-bff-internal.conf` | faqat `127.0.0.1`: JWKS va `/metrics` |
 | `nginx/admin-allowlist.conf` | IP allowlist (sukut bo'yicha hammasi yopiq) |
 | `deploy.sh` | `git pull`, `uv sync --frozen`, `alembic upgrade head`, `systemctl reload` |
 
-Birinchi o'rnatish tartibi `admin-bff.service` faylining boshida yozilgan.
+Birinchi o'rnatish tartibi: [`docs/deploy.md`](docs/deploy.md).
 
 ### Superadmin
 

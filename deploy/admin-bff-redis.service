@@ -1,0 +1,60 @@
+# /etc/systemd/system/admin-bff-redis.service - BFF sessiya Redis'i
+#
+# Serverdagi asosiy redis-server.service'ga (boshqa tizimlarniki) tegmaydi:
+# o'z config'i (/etc/admin-bff/redis.conf), o'z user'i, o'z socket'i.
+# O'rnatish: docs/deploy.md.
+
+[Unit]
+Description=UZBMB Admin BFF session Redis
+After=network.target
+Before=admin-bff.service
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/redis-server /etc/admin-bff/redis.conf --supervised systemd --daemonize no
+User=admin-bff-redis
+Group=admin-bff-redis
+# /run/admin-bff-redis/redis.sock: guruh (admin-bff) kira oladi.
+RuntimeDirectory=admin-bff-redis
+RuntimeDirectoryMode=0750
+# /var/lib/admin-bff-redis/dump.rdb
+StateDirectory=admin-bff-redis
+StateDirectoryMode=0700
+UMask=0007
+Restart=always
+RestartSec=2
+# To'xtashda Redis dump.rdb'ni yozadi.
+TimeoutStopSec=30
+LimitNOFILE=10032
+
+# --- Hardening ---
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# Faqat unix socket (port 0).
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

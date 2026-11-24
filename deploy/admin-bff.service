@@ -1,8 +1,9 @@
 # /etc/systemd/system/admin-bff.service
 #
-# O'rnatish (bir marta):
+# O'rnatish (bir marta). To'liq tartib: docs/deploy.md.
 #   useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin admin-bff
 #   usermod -aG admin-bff www-data          # Nginx socket'ga guruh orqali kiradi
+#   # Sessiya Redis'i: deploy/admin-bff-redis.service va admin-bff-redis.conf.
 #   # PostgreSQL: ikki rol (README, "PostgreSQL rollari"). admin_bff_owner sxemani
 #   # yaratadi (migratsiyalar), admin_bff servisning o'zi: u audit log'ni
 #   # o'zgartira olmaydi. Aks holda servis production'da ishga tushmaydi.
@@ -24,8 +25,10 @@
 [Unit]
 Description=UZBMB Admin BFF
 Documentation=file:///opt/admin-bff/README.md
-After=network-online.target postgresql.service redis-server.service
-Wants=network-online.target
+# Sessiya Redis'i alohida instans (admin-bff-redis.service), serverdagi
+# boshqa tizimlarning redis-server.service'i emas.
+After=network-online.target postgresql.service admin-bff-redis.service
+Wants=network-online.target admin-bff-redis.service
 
 [Service]
 Type=notify
