@@ -4,13 +4,10 @@
 #   useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin admin-bff
 #   usermod -aG admin-bff www-data          # Nginx socket'ga guruh orqali kiradi
 #   # Sessiya Redis'i: deploy/admin-bff-redis.service va admin-bff-redis.conf.
-#   # PostgreSQL: ikki rol (README, "PostgreSQL rollari"). admin_bff_owner sxemani
-#   # yaratadi (migratsiyalar), admin_bff servisning o'zi: u audit log'ni
-#   # o'zgartira olmaydi. Aks holda servis production'da ishga tushmaydi.
+#   # PostgreSQL boshqa serverda, bitta DB user bilan (docs/deploy.md, 5-qadam).
 #   install -d -o root -g root -m 0700 /etc/admin-bff/credentials
 #   # har bir secret alohida faylda, root:root 0600:
-#   #   /etc/admin-bff/credentials/db_password        (admin_bff roli)
-#   #   /etc/admin-bff/credentials/db_owner_password  (admin_bff_owner; faqat deploy.sh)
+#   #   /etc/admin-bff/credentials/db_password      (DB_USER'ning paroli)
 #   #   /etc/admin-bff/credentials/redis_password
 #   #   /etc/admin-bff/credentials/pinfl_hmac_key   (32+ bayt, base64)
 #   # kalit yaratish (faylga yoziladi, ekranga chiqmaydi):
@@ -45,8 +42,9 @@ Environment=APP_ENV=production PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 Environment=PROMETHEUS_MULTIPROC_DIR=/run/admin-bff/prometheus
 
 # Secret'lar: ilova ularni $CREDENTIALS_DIRECTORY'dan o'qiydi (pydantic-settings
-# secrets_dir). Fayl nomi = sozlama nomi. db_owner_password bu yerda yo'q va
-# bo'lmasligi kerak: servis audit jadvallarini o'zgartira olmasin (9-bo'lim).
+# secrets_dir). Fayl nomi = sozlama nomi. Ikki rol ishlatilsa (DB_OWNER_USER),
+# db_owner_password bu yerga qo'shilmaydi: servis audit jadvallarini
+# o'zgartira olmasin (9-bo'lim).
 # Keyingi bosqichlarda qo'shiladi:
 #   LoadCredential=jwt_private_key:/etc/admin-bff/credentials/jwt_private_key (4-bosqich)
 #   LoadCredential=oneid_client_secret:/etc/admin-bff/credentials/oneid_client_secret

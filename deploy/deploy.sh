@@ -24,10 +24,11 @@ echo "==> uv sync"
 UV_PYTHON_DOWNLOADS=never "$UV" sync --frozen --no-dev --compile-bytecode
 
 echo "==> alembic upgrade head"
-# Migratsiyalar DB egasi (DB_OWNER_USER, parol: credentials/db_owner_password)
-# nomidan bajariladi. Keyin ilova roliga (DB_USER) huquqlar qaytadan beriladi:
-# audit jadvallarida faqat SELECT va INSERT (9-bo'lim, migrations/env.py).
-# db_owner_password servisga berilmaydi (admin-bff.service'da LoadCredential yo'q).
+# Migratsiyalar DB_USER nomidan bajariladi: production'da bitta DB user
+# (egasining qarori, 2026-11-24). DB_OWNER_USER berilsa, ular sxema egasi
+# nomidan bajariladi (parol: credentials/db_owner_password, u servisga
+# berilmaydi) va DB_USER'ga audit jadvallarida faqat SELECT va INSERT qoladi
+# (9-bo'lim, migrations/env.py).
 set -a
 # shellcheck disable=SC1091
 . /etc/admin-bff/admin-bff.env

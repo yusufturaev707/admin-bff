@@ -13,22 +13,20 @@ Ikkita server ishtirok etadi:
 
 - **BFF serveri:** BFF, uning Redis'i va Nginx. Bu serverda boshqa loyihalar
   ham ishlaydi.
-- **DB serveri:** BFF'ning PostgreSQL bazasi. BFF unga tarmoq orqali TLS bilan
-  ulanadi (5-qadam). Bu serverda boshqa bazalar ham bo'lishi mumkin.
+- **DB serveri:** BFF'ning PostgreSQL bazasi. BFF unga tarmoq orqali ulanadi
+  (5-qadam). Bu server DB administratoriniki, deploy paytida unda hech narsa
+  o'zgartirilmaydi.
 
-Ikkala server ham umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
+BFF serveri umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
 
 - **Boshqa loyihalarning servislariga tegilmaydi.** BFF serveridagi Redis,
   PostgreSQL, Nginx saytlari va boshqa servislar o'zgartirilmaydi va qayta
   ishga tushirilmaydi. BFF'ning Python'i va Redis'i tizim paketlaridan alohida
   o'rnatiladi (1- va 6-qadamlar), shuning uchun boshqa loyihalarning paketlari
-  yangilanmaydi. DB serverida faqat yangi rollar, yangi baza va `pg_hba.conf`ga
-  qatorlar qo'shiladi.
+  yangilanmaydi.
 - **Faqat aniq servislar boshqariladi.** `systemctl restart nginx`,
   `systemctl restart postgresql` va `systemctl restart redis-server` buyruqlari
-  ishlatilmaydi. Nginx faqat `nginx -t`dan keyin `reload` qilinadi. DB serverida
-  o'zgarishlar `pg_reload_conf()` bilan o'qiladi, PostgreSQL qayta ishga
-  tushirilmaydi.
+  ishlatilmaydi. Nginx faqat `nginx -t`dan keyin `reload` qilinadi.
 - **apt servislarni o'zi qayta ishga tushirmaydi.** Ubuntu 22.04'da
   `apt install`dan keyin `needrestart` ishlaydi. U kutubxonasi yangilangan
   servislarni qayta ishga tushirishni taklif qiladi, ular orasida boshqa
@@ -53,10 +51,9 @@ Ikkala server ham umumiy bo'lgani uchun quyidagi qoidalarga amal qilinadi:
   bo'lsa, Nginx hammani rad etadi.
 - Adminlar kompyuterlarining `hosts` fayli:
   `<server_IP> admin.uzbmb.uz admin-api.uzbmb.uz`.
-- DB serveri:
-  - ichki IP manzili (`<DB_IP>`) va BFF serverining IP manzili (`<BFF_IP>`);
-  - unda root huquqi;
-  - PostgreSQL versiyasi 16 yoki undan yangi (lokal testlar 17'da o'tadi).
+- DB'ga ulanish ma'lumotlari: host (`<DB_IP>`), port, baza nomi, user va
+  parol. Ularni DB administratori beradi (5-qadam). Unga BFF serverining IP
+  manzili (`<BFF_IP>`) aytiladi.
 
 BFF serverida tekshirib oling. Bu buyruqlar hech narsani o'zgartirmaydi:
 
@@ -180,16 +177,15 @@ deploy key qo'shiladi.
 
 ## 4. Secret'lar
 
-Parollar tasodifiy yaratiladi va faqat fayllarda turadi. Ularni qo'lda yozish
-ham, ekranga chiqarish ham shart emas.
+Redis paroli va PINFL kaliti tasodifiy yaratiladi va faqat fayllarda turadi.
+Ularni qo'lda yozish ham, ekranga chiqarish ham shart emas. DB paroli
+5-qadamda yoziladi.
 
 ```bash
 install -d -o root -g root -m 0755 /etc/admin-bff
 install -d -o root -g root -m 0700 /etc/admin-bff/credentials
 ( cd /etc/admin-bff/credentials && umask 077
-  for f in db_password db_owner_password redis_password; do
-    head -c 32 /dev/urandom | base64 | tr -d '/+=\n' > "$f"
-  done
+  head -c 32 /dev/urandom | base64 | tr -d '/+=\n' > redis_password
   head -c 32 /dev/urandom | base64 > pinfl_hmac_key )
 ls -l /etc/admin-bff/credentials     # hammasi root root -rw-------
 ```
@@ -197,174 +193,56 @@ ls -l /etc/admin-bff/credentials     # hammasi root root -rw-------
 `pinfl_hmac_key`ning zaxira nusxasi olinadi: u yo'qolsa, adminlarga
 biriktirilgan PINFL'lar qayta biriktiriladi (`docs/security.md`, "Kalitlar").
 
-## 5. PostgreSQL (DB serverida)
+## 5. PostgreSQL (DB serveri)
 
-BFF'ning bazasi alohida DB serverida turadi. BFF unga tarmoq orqali TLS bilan
-ulanadi va sertifikatni tekshiradi (`DB_SSLMODE=verify-full`). Production
-boshqa serverdagi bazaga shifrlanmagan ulanishni rad etadi, servis ishga
-tushmaydi.
+BFF'ning bazasi alohida DB serverida turadi. BFF unga beshta qiymat bilan
+ulanadi: host, port, baza nomi, user va parol. Boshqa sozlama kerak emas
+(egasining qarori, 2026-11-24):
 
-Boshqacha yozilmagan bo'lsa, bu qadamdagi buyruqlar **DB serverida** root
-sifatida bajariladi.
+- **TLS.** DB serverida TLS yoqilgan bo'lsa, ulanish shifrlanadi, lekin
+  sertifikat tekshirilmaydi. TLS yoqilmagan bo'lsa, BFF shifrlanmagan holda
+  ulanadi. Bu trafikni tinglashdan himoya qiladi, soxta DB serveridan (MITM)
+  esa himoya qilmaydi. Ulanish shifrlanganmi yoki yo'qmi, servis ishga
+  tushganda log'ga yozadi (8-qadam).
+- **Bitta user.** Migratsiyalar ham, servis ham shu user nomidan ishlaydi va
+  jadvallarning egasi u bo'ladi. Audit log'ni trigger'lar va hash zanjiri
+  himoya qiladi, lekin jadval egasi trigger'ni o'chira oladi
+  (`docs/security.md`). Shuning uchun servis ishga tushganda log'ga
+  `audit_privileges_too_broad` ogohlantirishi yoziladi. Bu kutilgan holat.
 
-### 5.1. Versiya va tarmoq
+Bu qadamda DB serverida hech narsa bajarilmaydi.
 
-```bash
-pg_lsclusters                                    # versiya: 16 yoki yangi
-runuser -u postgres -- psql -Atc "show listen_addresses" -c "show ssl" -c "show port"
-```
+### 5.1. DB administratoridan so'raladigan narsalar
 
-- **Versiya.** 15 yoki eski bo'lsa, davom etishdan oldin xabar bering.
-- **`listen_addresses`.** U `*` yoki DB serverining ichki IP manzili bo'lishi
-  kerak. Bu sozlama faqat PostgreSQL'ni qayta ishga tushirganda o'zgaradi, bu esa
-  shu serverdagi boshqa bazalarni ham to'xtatadi. O'zgartirish kerak bo'lsa, DB
-  serverining egasi bilan kelishiladi.
-- **Firewall.** DB serverida firewall bo'lsa, 5432-port faqat BFF serveridan
-  ochiladi: `ufw allow from <BFF_IP> to any port 5432 proto tcp`.
+- PostgreSQL 16 yoki yangi versiyasi.
+- BFF uchun alohida, bo'sh baza. User shu bazaning egasi bo'lishi kerak
+  (`CREATE DATABASE admin_bff OWNER <user>;`), chunki migratsiyalar jadval,
+  trigger va funksiyalar yaratadi.
+- `pg_hba.conf`da shu user faqat shu bazaga, faqat BFF serveridan
+  (`<BFF_IP>/32`) va `scram-sha-256` bilan kira olsin.
+- DB serverida firewall bo'lsa, PostgreSQL porti BFF serveri uchun ochilsin.
+- Iloji bo'lsa, TLS yoqilsin (`ssl = on`). Ubuntu va Debian'ning PostgreSQL
+  paketlarida u odatda yoqilgan bo'ladi.
 
-### 5.2. TLS sertifikati
+### 5.2. Parol
 
-BFF ikki narsani tekshiradi:
-
-- sertifikat BFF ishonadigan CA bilan imzolangan;
-- sertifikat aynan `DB_HOST` uchun berilgan, ya'ni IP manzil yoki nom
-  sertifikatning `subjectAltName` maydonida bor.
-
-**DB serverida tashkilot CA'si imzolagan sertifikat bo'lsa,** shu CA'ning
-sertifikatini 5.5-qadamda BFF serveriga qo'ying va 5.3-qadamga o'ting.
-
-**Bo'lmasa** (masalan, Debian yoki Ubuntu'ning `ssl-cert-snakeoil` sertifikati), BFF
-ulanishi uchun alohida CA va server sertifikati yaratiladi. `<DB_IP>` o'rniga
-DB serverining ichki IP manzili yoziladi:
+Parol ekranga chiqmaydi va shell tarixiga tushmaydi:
 
 ```bash
-install -d -m 0700 /root/admin-bff-db-ca && cd /root/admin-bff-db-ca
-openssl req -x509 -new -nodes -newkey ec -pkeyopt ec_paramgen_curve:P-256 -days 3650 \
-  -subj "/CN=admin-bff-db-ca" \
-  -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \
-  -keyout ca.key -out ca.crt
-openssl req -new -nodes -newkey ec -pkeyopt ec_paramgen_curve:P-256 -subj "/CN=<DB_IP>" \
-  -keyout server.key -out server.csr
-printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature' \
-  'extendedKeyUsage=serverAuth' 'subjectAltName=IP:<DB_IP>' \
-  'subjectKeyIdentifier=hash' 'authorityKeyIdentifier=keyid' > server.ext
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 825 \
-  -extfile server.ext -out server.crt
-openssl verify -CAfile ca.crt server.crt         # server.crt: OK
+( umask 077; read -rsp 'DB paroli: ' P; echo
+  printf '%s' "$P" > /etc/admin-bff/credentials/db_password; unset P )
+ls -l /etc/admin-bff/credentials/db_password     # root root -rw-------
 ```
 
-Sertifikatni PostgreSQL'ga ulash. `V`: `pg_lsclusters`dagi versiya, masalan 17:
+### 5.3. Tarmoq
 
 ```bash
-V=17
-install -m 0644 -o postgres -g postgres server.crt /etc/postgresql/$V/main/server.crt
-install -m 0600 -o postgres -g postgres server.key /etc/postgresql/$V/main/server.key
-pg_conftool $V main set ssl on
-pg_conftool $V main set ssl_cert_file /etc/postgresql/$V/main/server.crt
-pg_conftool $V main set ssl_key_file /etc/postgresql/$V/main/server.key
-runuser -u postgres -- psql -Atc "select pg_reload_conf()"
-runuser -u postgres -- psql -Atc "show ssl"      # on
+timeout 3 bash -c '</dev/tcp/<DB_IP>/5432' && echo ochiq
 ```
 
-- **Sertifikat almashishi shu DB serveriga ulanadigan hamma mijozga ta'sir
-  qiladi.** `sslmode=require` yoki `prefer` bilan ulanadigan mijozlar
-  ishlashda davom etadi. Eski sertifikatni tekshiradigan mijoz
-  (`verify-ca`, `verify-full`) ulana olmay qoladi. Shuning uchun bu qadam DB
-  serverining egasi bilan kelishib bajariladi.
-- **`ca.key` maxfiy.** U faqat sertifikatni yangilash uchun kerak, uni
-  `/root/admin-bff-db-ca`da yoki undan ham xavfsiz joyda saqlang. `ca.crt`
-  esa ochiq ma'lumot, BFF serveriga shu nusxalanadi.
-- **Sertifikat 825 kun amal qiladi.** Tugash sanasi:
-  `openssl x509 -enddate -noout -in server.crt`. Muddat o'tsa, BFF bazaga
-  ulana olmaydi. Undan oldin shu buyruqlar bilan yangi `server.crt` chiqariladi
-  (`ca.key` o'sha qoladi).
-
-### 5.3. Rollar va baza
-
-Ikki rol kerak (README, "PostgreSQL rollari"). Parollar 4-qadamda BFF
-serverida yaratilgan. Ularni BFF serverida ko'rib, DB serveridagi psql'ning
-`\password` buyrug'iga kiritasiz.
-
-BFF serverida:
-
-```bash
-cat /etc/admin-bff/credentials/db_owner_password; echo
-cat /etc/admin-bff/credentials/db_password; echo
-```
-
-DB serverida:
-
-```bash
-runuser -u postgres -- psql -v ON_ERROR_STOP=1
-```
-
-```sql
-CREATE ROLE admin_bff_owner LOGIN;
-CREATE ROLE admin_bff LOGIN;
-\password admin_bff_owner
-\password admin_bff
-CREATE DATABASE admin_bff OWNER admin_bff_owner;
--- Shu serverdagi boshqa rollar bu bazaga ulana olmasin:
-REVOKE CONNECT, TEMPORARY ON DATABASE admin_bff FROM PUBLIC;
-GRANT CONNECT ON DATABASE admin_bff TO admin_bff_owner, admin_bff;
-\q
-```
-
-`\password` parolni ekranga chiqarmaydi. U serverga faqat parolning SCRAM
-hash'ini yuboradi, shuning uchun parol PostgreSQL log'iga ham, psql tarixiga
-ham tushmaydi.
-
-### 5.4. `pg_hba.conf`
-
-Bu qatorlar fayl boshida turishi kerak, chunki PostgreSQL birinchi mos kelgan
-qatorni ishlatadi:
-
-- **1-qator** BFF rollarini faqat o'z bazasiga, faqat BFF serveridan va faqat
-  TLS bilan kiritadi.
-- **Qolgan qatorlar** bu rollarni boshqa hamma joyda rad etadi: boshqa
-  bazalarda, TLS'siz ulanishda va boshqa IP'lardan.
-
-```bash
-BFF_IP=<BFF_IP>
-F=$(runuser -u postgres -- psql -Atc "show hba_file")
-cp -p "$F" "$F.bak-admin-bff"
-{
-  echo "# Admin BFF: faqat o'z bazasi, faqat BFF serveridan, faqat TLS bilan."
-  echo "hostssl  admin_bff  admin_bff_owner,admin_bff  $BFF_IP/32  scram-sha-256"
-  echo "host     all        admin_bff_owner,admin_bff  0.0.0.0/0   reject"
-  echo "host     all        admin_bff_owner,admin_bff  ::/0        reject"
-  echo "local    all        admin_bff_owner,admin_bff              reject"
-  echo
-  cat "$F.bak-admin-bff"
-} > "$F"
-runuser -u postgres -- psql -Atc "select pg_reload_conf()"
-runuser -u postgres -- psql -Atc "select line_number, error from pg_hba_file_rules where error is not null"
-```
-
-Oxirgi buyruq hech narsa chiqarmasligi kerak. Agar xato chiqsa, PostgreSQL
-eski qoidalar bilan ishlashda davom etadi. Unda faylni
-`cp -p "$F.bak-admin-bff" "$F"` bilan qaytarib, xatoni tuzating.
-
-### 5.5. BFF serverida: CA sertifikati va tekshiruv
-
-5.2-qadamdagi `ca.crt` (yoki tashkilot CA'sining sertifikati) BFF serveriga
-nusxalanadi. Masalan, DB serverida `cat ca.crt` qilib, chiqishini BFF serverida
-shu faylga yozish mumkin:
-
-```bash
-install -m 0644 -o root -g root /dev/null /etc/admin-bff/db-ca.crt
-nano /etc/admin-bff/db-ca.crt                    # -----BEGIN CERTIFICATE----- ... END
-openssl s_client -starttls postgres -connect <DB_IP>:5432 \
-  -CAfile /etc/admin-bff/db-ca.crt -verify_ip <DB_IP> -verify_return_error \
-  </dev/null 2>/dev/null | grep "Verify return code"
-# Verify return code: 0 (ok)
-```
-
-`0 (ok)` chiqmasa, BFF ham ulana olmaydi. Odatda sababi shulardan biri:
-
-- noto'g'ri CA fayli;
-- sertifikatdagi IP `<DB_IP>` bilan mos emas;
-- tarmoq yoki firewall ulanishni o'tkazmayapti.
+`ochiq` chiqmasa, DB serveridagi firewall yoki `listen_addresses` ulanishni
+o'tkazmayapti: bu DB administratori bilan hal qilinadi. User va parol
+8-qadamda, migratsiyalarda tekshiriladi.
 
 ## 6. Redis 7.4 (BFF'ning o'z instansi)
 
@@ -429,6 +307,11 @@ o'zgartirmang.
 
 ## 7. Sozlamalar
 
+Serverda sozlamalar bitta faylda turadi: `/etc/admin-bff/admin-bff.env`.
+Servis uni systemd orqali o'qiydi (`EnvironmentFile=`). Production'da
+`/srv/admin-bff/.env` o'qilmaydi, uni yaratish shart emas. Parollar bu faylga
+emas, `/etc/admin-bff/credentials/` ichiga yoziladi (4- va 5-qadamlar).
+
 ```bash
 install -m 0640 -o root -g root /srv/admin-bff/deploy/admin-bff.env.example /etc/admin-bff/admin-bff.env
 nano /etc/admin-bff/admin-bff.env
@@ -437,9 +320,8 @@ nano /etc/admin-bff/admin-bff.env
 Tekshiriladigan qiymatlar:
 
 - `FRONTEND_ORIGIN`: frontendning haqiqiy domeni;
-- `DB_HOST`: `<DB_IP>` (yoki sertifikatdagi nom, u BFF serverida `/etc/hosts`
-  orqali ochilishi kerak) va `DB_PORT`;
-- `DB_SSLMODE=verify-full`, `DB_SSLROOTCERT=/etc/admin-bff/db-ca.crt`;
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`: DB administratori bergan
+  qiymatlar (5-qadam);
 - `REDIS_URL`: `unix:///run/admin-bff-redis/redis.sock?db=0`.
 
 ## 8. Migratsiyalar va servis
@@ -460,17 +342,27 @@ systemctl enable --now admin-bff
 systemctl status admin-bff --no-pager
 curl -s --unix-socket /run/admin-bff/bff.sock http://localhost/ready   # {"status":"ok",...}
 systemd-analyze security admin-bff
+journalctl -u admin-bff -n 200 --no-pager | grep -E 'database_tls|audit_privileges_too_broad'
 ```
+
+Oxirgi buyruqda:
+
+- `"encrypted": true`: DB ulanishi shifrlangan.
+- `"encrypted": false`: DB serverida TLS yo'q, parol va ma'lumotlar tarmoqda
+  ochiq ketadi. DB administratoridan `ssl = on` so'raladi. Yoqilgandan keyin
+  `systemctl restart admin-bff` qilinadi.
+- `audit_privileges_too_broad`: kutilgan holat, bitta DB user bilan ishlanadi
+  (5-qadam).
 
 Servis ishga tushmasa, sababi `journalctl -u admin-bff -n 50 --no-pager`da
 ko'rinadi. Ko'p uchraydigan sabablar:
 
 - migratsiya qilinmagan;
-- `DB_USER` audit jadvalini o'zgartira oladi (owner yoki superuser);
 - Redis paroli `credentials/redis_password` bilan bir xil emas;
 - DB'ga ulanib bo'lmayapti. Migratsiya o'tib, servis ulana olmasa, sabab
-  `admin-bff.service.d/db.conf`dagi IP. Ikkalasi ham ulana olmasa, 5.5-qadamdagi
-  `openssl` tekshiruvi, `pg_hba.conf` va DB serveridagi firewall tekshiriladi.
+  `admin-bff.service.d/db.conf`dagi IP. Ikkalasi ham ulana olmasa, host, port,
+  user va parol, DB serveridagi `pg_hba.conf` va firewall tekshiriladi
+  (5-qadam).
 
 ## 9. Birinchi superadmin
 
@@ -560,8 +452,8 @@ systemctl reload admin-bff
 ```
 
 Yangi versiya migratsiya qo'shgan bo'lsa, eski kod yangi sxema bilan ishga
-tushmaydi. Unda `alembic downgrade`dan oldin DB serverida bazaning nusxasi
-olinadi: `runuser -u postgres -- pg_dump -Fc admin_bff > /root/admin_bff.dump`.
+tushmaydi. Unda `alembic downgrade`dan oldin bazaning nusxasi olinadi
+(`pg_dump -Fc`, DB administratori orqali).
 
 ### Python va Redis'ning xavfsizlik yangilanishlari
 

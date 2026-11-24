@@ -12,10 +12,10 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 | Parol o'g'irlanishi | **Ikkinchi faktor yo'q** (TOTP egasining qarori bilan olib tashlangan, pastda). Parol o'g'irlansa, hisobni bloklash qoidalari, Argon2id va Nginx IP allowlist himoya qiladi |
 | Sessiyani o'g'irlash yoki unga o'z ID'sini qo'yish | Sessiya serverda saqlanadi. Cookie `__Host-` prefiksli, `HttpOnly`, `Secure`, `SameSite=Strict`. Har login'da yangi ID beriladi. 30 daqiqa harakatsizlik yoki 12 soatdan keyin sessiya tugaydi |
 | CSRF | `Origin` aynan frontend bilan solishtiriladi, `X-CSRF-Token` sessiyadagi token bilan `compare_digest` orqali tekshiriladi |
-| DB'ga ulanishni tinglash yoki soxta DB serveri | Baza boshqa serverda, ulanish TLS bilan. Sertifikat CA bo'yicha va `DB_HOST` nomi bo'yicha tekshiriladi (`DB_SSLMODE=verify-full`). Tekshiruvsiz TLS rejimi yo'q, production boshqa hostdagi bazaga shifrlanmagan ulanishni rad etadi. `pg_hba.conf`da BFF rollari faqat BFF serveridan va faqat `hostssl` bilan kiradi |
+| DB'ga ulanishni tinglash yoki soxta DB serveri | Baza boshqa serverda. DB serveri TLS'ni qo'llasa, ulanish shifrlanadi (`DB_SSLMODE` sukut bo'yicha `prefer`), lekin sertifikat tekshirilmaydi: bu tinglashdan himoya qiladi, soxta DB serveridan (MITM) himoya qilmaydi. Server TLS'ni qo'llamasa, ulanish shifrlanmaydi va servis ishga tushganda `database_tls` ogohlantirishini yozadi (egasining qarori, 2026-11-24). Sertifikatni tekshirish kerak bo'lsa: `DB_SSLMODE=verify-full` va `DB_SSLROOTCERT` |
 | DB yoki DB backup sizib chiqishi | Parol Argon2id hash ko'rinishida. PINFL faqat HMAC hash sifatida saqlanadi, kalit DB'da emas |
 | Log orqali sizib chiqish | Parol, kod, token va cookie log'ga yozilmaydi. PII maskalanadi. Mavjud bo'lmagan login audit'ga ochiq yozilmaydi, chunki ba'zan unga parol kiritib yuboriladi |
-| Izni yashirish (audit yozuvini o'zgartirish yoki o'chirish) | Ilova roli audit'ga faqat qo'sha oladi. Trigger'lar UPDATE, DELETE va TRUNCATE'ni hamma uchun rad etadi. Hash zanjiri va journald'dagi nusxa qolgan o'zgarishlarni ko'rsatadi (pastda) |
+| Izni yashirish (audit yozuvini o'zgartirish yoki o'chirish) | Ikki rol ishlatilsa, ilova roli audit'ga faqat qo'sha oladi. Production hozircha bitta DB user bilan ishlaydi (pastda). Trigger'lar UPDATE, DELETE va TRUNCATE'ni hamma uchun rad etadi. Hash zanjiri va journald'dagi nusxa qolgan o'zgarishlarni ko'rsatadi (pastda) |
 
 ## Avtorizatsiya (RBAC)
 
@@ -83,11 +83,15 @@ Oddiy GET ro'yxatlar yozilmaydi (9-bo'lim).
 
 Himoya to'rt qatlamdan iborat:
 
-1. **DB huquqlari.** Servis `admin_bff` roli bilan ishlaydi.
+1. **DB huquqlari (faqat ikki rol bilan).** Egasining qarori bilan
+   (2026-11-24) production hozircha bitta DB user bilan ishlaydi. U
+   jadvallarning egasi, shuning uchun bu qatlam ishlamaydi va servis ishga
+   tushganda `audit_privileges_too_broad` deb ogohlantiradi. `DB_OWNER_USER`
+   berilsa, servis `DB_USER` roli bilan ishlaydi:
    - Unda `audit_log` uchun faqat `SELECT` va `INSERT` bor. `id` ustuniga
      INSERT huquqi ham yo'q, ya'ni id'ni ketma-ketlik beradi.
    - `audit_anchors` uchun faqat `SELECT` bor.
-   - Partition'lar sxema egasi (`admin_bff_owner`) nomidan yaratiladi va
+   - Partition'lar sxema egasi (`DB_OWNER_USER`) nomidan yaratiladi va
      o'chiriladi. Buning uchun ikkita `SECURITY DEFINER` funksiya bor, ularda
      cheklov qo'yilgan:
      - partition faqat hozirgi vaqtdan ±13 oy ichida yaratiladi;
@@ -114,7 +118,7 @@ Himoya to'rt qatlamdan iborat:
 
 | Holat | Nima qilinadi |
 | --- | --- |
-| Owner yoki superuser trigger'ni o'chirib, butun zanjirni qaytadan hisoblab yozadi | DB ichidan buni aniqlab bo'lmaydi. Faqat tashqi nusxa bilan solishtirib bilinadi. TODO(owner): journald yozuvlarini boshqa serverga (syslog yoki Loki) yuborish kerak |
+| Owner yoki superuser trigger'ni o'chirib, butun zanjirni qaytadan hisoblab yozadi | Bitta DB user bilan (hozirgi holat) BFF'ning DB parolini bilgan har kim shunday qila oladi. DB ichidan buni aniqlab bo'lmaydi. Faqat tashqi nusxa bilan solishtirib bilinadi. TODO(owner): journald yozuvlarini boshqa serverga (syslog yoki Loki) yuborish kerak |
 | Zanjir oxiridagi yozuvlar kesib tashlanadi | Zanjir tekshiruvi buni ko'rmaydi. U oxirgi `id` va `hash`ni qaytaradi, ularni journald'dagi oxirgi `audit` yozuvi bilan solishtiring |
 | Ilova credential'lari bilan to'g'ri hash'li soxta yozuv qo'shiladi | Zanjir mavjud yozuvlarni himoya qiladi, yangi yozuvni emas. Ilova roli yozuvchi bo'lgani uchun bu cheklov tabiiy. Credential'lar faqat systemd orqali beriladi |
 | Amal bajarilgan, lekin audit yozuvi DB'ga tushmagan (masalan, DB shu orada uzilgan) | Amal va uning audit yozuvi bitta tranzaksiyada emas. Bunday holatda so'rov `500` bilan tugaydi va journald'da `stored: false` yozuvi qoladi |

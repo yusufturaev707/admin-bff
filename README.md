@@ -23,8 +23,9 @@ standart xavfsizlik yangilanishlari 2027-yil bahorida tugaydi (`docs/deploy.md`
 boshida).
 Serverga o'rnatish tartibi: [`docs/deploy.md`](docs/deploy.md). Qisqacha:
 
-- PostgreSQL: alohida DB serverida (16+), ulanish TLS bilan va sertifikat
-  tekshiriladi (`DB_SSLMODE=verify-full`). BFF serverida PostgreSQL kerak emas.
+- PostgreSQL: alohida DB serverida (16+). BFF unga host, port, baza nomi, user
+  va parol bilan ulanadi. DB serverida TLS bo'lsa, ulanish shifrlanadi. BFF
+  serverida PostgreSQL kerak emas.
 - Redis 7.4: Ubuntu'niki 6.0, mos kelmaydi. BFF'ning Redis'i manbadan
   yig'iladi (`/opt/admin-bff-redis`) va alohida instans sifatida ishlaydi
   (`deploy/admin-bff-redis.service`). Serverdagi boshqa Redis'larga tegilmaydi.
@@ -57,9 +58,9 @@ CREATE ROLE admin_bff LOGIN CREATEDB PASSWORD '...';
 CREATE DATABASE admin_bff OWNER admin_bff;
 ```
 
-Development'da bitta rol yetarli. Bunda audit jadvallarini faqat trigger'lar
-himoya qiladi, ilova esa ishga tushishda `audit_privileges_too_broad` deb
-ogohlantiradi. Production'da ikkita rol shart (pastda, "PostgreSQL rollari").
+Bitta rol yetarli. Bunda audit jadvallarini faqat trigger'lar va hash
+zanjiri himoya qiladi, ilova esa ishga tushishda `audit_privileges_too_broad`
+deb ogohlantiradi (pastda, "PostgreSQL user'i").
 
 ```bash
 uv run alembic upgrade head                                 # jadvallar
@@ -148,9 +149,9 @@ mavjud bo'lsa) `.env` umuman o'qilmaydi.
 | `LOG_FORMAT` | `json` | production'da faqat `json` |
 | `FRONTEND_ORIGIN` | yo'q | CORS va CSRF uchun yagona ruxsat etilgan origin |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` | `127.0.0.1`, `5432`, `admin_bff`, `admin_bff` | `DB_HOST` unix socket papkasi ham bo'lishi mumkin. `DB_USER` servisning roli |
-| `DB_OWNER_USER` | yo'q | sxema egasi, faqat migratsiyalar uchun. Yo'q bo'lsa, `DB_USER` |
-| `DB_SSLMODE` | `disable` | `verify-full` (sertifikat zanjiri va `DB_HOST` nomi) yoki `verify-ca` (faqat zanjir). Tekshiruvsiz TLS rejimi yo'q. Production boshqa hostdagi bazaga `disable` bilan ishga tushmaydi |
-| `DB_SSLROOTCERT` | yo'q | DB sertifikatini imzolagan CA fayli. Yo'q bo'lsa, tizimning CA'lari |
+| `DB_OWNER_USER` | yo'q | ixtiyoriy: sxema egasi, faqat migratsiyalar uchun. Yo'q bo'lsa, `DB_USER` (production'da shunday) |
+| `DB_SSLMODE` | boshqa hostda `prefer`, shu hostda `disable` | `prefer`: server TLS'ni qo'llasa shifrlanadi, sertifikat tekshirilmaydi. `verify-full` (sertifikat zanjiri va `DB_HOST` nomi) yoki `verify-ca` (faqat zanjir) shifrlashsiz ulanmaydi. Production boshqa hostdagi bazaga `disable` bilan ishga tushmaydi |
+| `DB_SSLROOTCERT` | yo'q | faqat `verify-*` bilan: DB sertifikatini imzolagan CA fayli. Yo'q bo'lsa, tizimning CA'lari |
 | `AUDIT_RETENTION_DAYS` | `90` | audit log saqlash muddati, kamida 90 |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | parol URL'da bo'lmasin |
 | `REDIS_KEY_PREFIX` | bo'sh | umumiy dev Redis'da kalitlar aralashmasligi uchun |
@@ -165,8 +166,8 @@ Secret'lar production'da faqat systemd `LoadCredential=` orqali beriladi. Kodga,
 testga va repo'ga yozilmaydi. Ular:
 
 - `db_password` va `redis_password`;
-- `db_owner_password`: faqat `deploy.sh` migratsiyalar uchun o'qiydi, servisga
-  berilmaydi;
+- `db_owner_password` (faqat ikki rol bilan): `deploy.sh` migratsiyalar uchun
+  o'qiydi, servisga berilmaydi;
 - `pinfl_hmac_key`: OneID'da PINFL bo'yicha qidirish kaliti;
 - keyingi bosqichlarda `jwt_private_key` va `oneid_client_secret`.
 
@@ -220,33 +221,24 @@ serverning o'zidan ochiladi: `http://127.0.0.1:18081/metrics`
 Tizimlar bo'yicha kechikish va circuit breaker metrikalari connector'lar
 bilan birga qo'shiladi (5-bosqich).
 
-### PostgreSQL rollari
+### PostgreSQL user'i
 
-Servis audit log'ni o'zgartira olmasligi uchun ikkita rol kerak (9-bo'lim):
+Production'da bitta DB user bor (egasining qarori, 2026-11-24): migratsiyalar
+ham, servis ham uning nomidan ishlaydi. Unga DB administratori bergan bo'sh
+baza kerak, user shu bazaning egasi bo'ladi (`docs/deploy.md`, 5-qadam).
 
-- `admin_bff_owner` sxema egasi. Migratsiyalar shu rol nomidan bajariladi.
-  Paroli `/etc/admin-bff/credentials/db_owner_password` faylida turadi va
-  faqat `deploy.sh`ga kerak.
-- `admin_bff` servisning o'zi. Audit jadvallarida faqat `SELECT` va `INSERT`
-  qila oladi.
+Bunda audit jadvallarini trigger'lar va hash zanjiri himoya qiladi, DB
+huquqlari esa himoya qilmaydi: jadval egasi trigger'ni o'chira oladi
+(`docs/security.md`). Servis ishga tushganda `audit_privileges_too_broad` deb
+ogohlantiradi.
 
-```sql
-CREATE ROLE admin_bff_owner LOGIN PASSWORD '...';
-CREATE ROLE admin_bff LOGIN PASSWORD '...';
-CREATE DATABASE admin_bff OWNER admin_bff_owner;
--- Serverdagi boshqa tizimlarning rollari bu bazaga ulana olmasin:
-REVOKE CONNECT, TEMPORARY ON DATABASE admin_bff FROM PUBLIC;
-GRANT CONNECT ON DATABASE admin_bff TO admin_bff_owner, admin_bff;
-```
+Ikki rol ham ishlaydi: sxema egasi `DB_OWNER_USER` (migratsiyalar, paroli
+`credentials/db_owner_password`, servisga berilmaydi) va servisning roli
+`DB_USER` (audit jadvallarida faqat `SELECT` va `INSERT`). Unda
+`alembic upgrade head` har safar `DB_USER`ga huquqlarni qaytadan beradi
+(`app/core/db_privileges.py`). `DB_OWNER_USER` berilgan bo'lsa-yu, servis
+audit log'ni o'zgartira olsa, production'da u ishga tushmaydi.
 
-`pg_hba.conf` qatorlari [`docs/deploy.md`](docs/deploy.md)ning 5.4-qadamida:
-BFF rollari faqat o'z bazasiga, faqat BFF serveridan va faqat TLS bilan kiradi.
-
-`alembic upgrade head` har safar `admin_bff` roliga huquqlarni qaytadan beradi
-(`app/core/db_privileges.py`). Yangi jadval avtomatik to'liq huquq oladi,
-ortiqcha berilgan huquq esa olib tashlanadi. Production'da servis ishga
-tushishda o'z huquqlarini tekshiradi. Agar u audit log'ni o'zgartira olsa
-(masalan, `DB_USER` owner yoki superuser bo'lsa), servis ishga tushmaydi.
 Yangilash:
 
 ```bash
