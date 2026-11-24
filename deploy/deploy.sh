@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Admin BFF'ni yangilash: git pull -> uv sync -> alembic upgrade -> reload.
-# root sifatida ishga tushiriladi:  sudo /srv/admin-bff/deploy/deploy.sh
+# root sifatida ishga tushiriladi:  admin-bff update  (deploy/admin-bff.sh)
 #
 # Kod root'ga tegishli va servis uchun faqat o'qish uchun ochiq
 # (ProtectSystem=strict): servis o'z kodini o'zgartira olmaydi.
 set -euo pipefail
 
 APP_DIR=/srv/admin-bff
-CREDENTIALS=/etc/admin-bff/credentials
 UV=${UV:-/usr/local/bin/uv}
 
 cd "$APP_DIR"
@@ -31,13 +30,8 @@ echo "==> alembic upgrade head"
 # (egasining qarori, 2026-11-24). DB_OWNER_USER berilsa, ular sxema egasi
 # nomidan bajariladi (parol: credentials/db_owner_password, u servisga
 # berilmaydi) va DB_USER'ga audit jadvallarida faqat SELECT va INSERT qoladi
-# (9-bo'lim, migrations/env.py).
-set -a
-# shellcheck disable=SC1091
-. /etc/admin-bff/admin-bff.env
-set +a
-APP_ENV=production CREDENTIALS_DIRECTORY="$CREDENTIALS" \
-    "$APP_DIR/.venv/bin/alembic" upgrade head
+# (9-bo'lim, migrations/env.py). Sozlamalar va secret'lar servisdagidek.
+bash "$APP_DIR/deploy/admin-bff.sh" migrate
 
 echo "==> systemctl reload admin-bff"
 systemctl reload admin-bff

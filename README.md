@@ -185,20 +185,18 @@ Fayllar `deploy/` papkasida:
 | `nginx/admin-frontend.conf` | frontend server bloki |
 | `nginx/admin-bff-internal.conf` | faqat `127.0.0.1`: JWKS va `/metrics` |
 | `nginx/admin-allowlist.conf` | IP allowlist (sukut bo'yicha hammasi yopiq) |
-| `deploy.sh` | `git pull`, `uv sync --frozen`, `alembic upgrade head`, `systemctl reload` |
+| `admin-bff.sh` | serverdagi qisqa buyruq `admin-bff`: `update`, `migrate`, `superadmin <login>`, `status` |
+| `deploy.sh` | `git pull`, `uv sync --frozen`, `alembic upgrade head`, `systemctl reload` (`admin-bff update`) |
 
 Birinchi o'rnatish tartibi: [`docs/deploy.md`](docs/deploy.md).
 
 ### Superadmin
 
-Birinchi superadmin migratsiyalardan keyin serverda yaratiladi. Skript
-servisning sozlamalari va credential'lari bilan root sifatida ishlaydi (xuddi
-`deploy.sh` kabi):
+Birinchi superadmin migratsiyalardan keyin serverda yaratiladi. Buyruq
+servisning sozlamalari va credential'lari bilan root sifatida ishlaydi:
 
 ```bash
-sudo sh -c 'set -a; . /etc/admin-bff/admin-bff.env; set +a; cd /srv/admin-bff &&
-  APP_ENV=production CREDENTIALS_DIRECTORY=/etc/admin-bff/credentials \
-  .venv/bin/python -m scripts.create_superadmin --username <login>'
+sudo admin-bff superadmin <login>
 ```
 
 - `superadmin` tizim roli (`*:*:*`) bo'lmasa, skript uni yaratadi.
@@ -242,7 +240,7 @@ audit log'ni o'zgartira olsa, production'da u ishga tushmaydi.
 Yangilash:
 
 ```bash
-sudo /srv/admin-bff/deploy/deploy.sh
+sudo admin-bff update
 ```
 
 ## Kalitlar

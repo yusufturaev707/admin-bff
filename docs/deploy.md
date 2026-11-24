@@ -1,8 +1,8 @@
 # Serverga o'rnatish (Ubuntu 22.04)
 
 Bu hujjat Admin BFF'ni Ubuntu 22.04 LTS (jammy) serveriga birinchi marta
-o'rnatish tartibi. Keyingi yangilashlar uchun `deploy/deploy.sh` ishlatiladi
-(12-bo'lim).
+o'rnatish tartibi. Keyingi yangilashlar uchun `admin-bff update` buyrug'i
+ishlatiladi (12-bo'lim).
 
 > **Ubuntu 22.04'ning standart xavfsizlik yangilanishlari 2027-yil bahorida
 > tugaydi.** Undan keyin yangilanishlar faqat Ubuntu Pro bilan keladi. Server
@@ -168,7 +168,13 @@ UV_PYTHON_PREFERENCE=only-system UV_PYTHON_DOWNLOADS=never \
   uv sync --frozen --no-dev --compile-bytecode
 .venv/bin/python -V                      # Python 3.12.16
 readlink -f .venv/bin/python             # /usr/local/bin/python3.12
+
+ln -sf /srv/admin-bff/deploy/admin-bff.sh /usr/local/bin/admin-bff
+admin-bff                                # buyruqlar ro'yxati
 ```
+
+`admin-bff` qisqa buyruq: migratsiyalar, superadmin, holat va yangilash. U
+sozlama va secret'larni servisdagidek o'qiydi (`deploy/admin-bff.sh`).
 
 `readlink` `/root/...` yoki `/home/...` ko'rsatsa, servis `203/EXEC Permission
 denied` bilan ishga tushmaydi: u uy papkalarini ko'rmaydi (`ProtectHome=yes`).
@@ -296,10 +302,7 @@ Tekshiriladigan qiymatlar:
 ## 8. Migratsiyalar va servis
 
 ```bash
-cd /srv/admin-bff
-( set -a; . /etc/admin-bff/admin-bff.env; set +a
-  APP_ENV=production CREDENTIALS_DIRECTORY=/etc/admin-bff/credentials \
-  .venv/bin/alembic upgrade head )
+admin-bff migrate                        # oxirida: <revision> (head)
 
 cp /srv/admin-bff/deploy/admin-bff.service /etc/systemd/system/
 # Servis faqat localhost bilan gaplasha oladi (IPAddressDeny=any): DB serveri
@@ -309,7 +312,7 @@ printf '[Service]\nIPAddressAllow=%s/32\n' '<DB_IP>' > /etc/systemd/system/admin
 systemctl daemon-reload
 systemctl enable --now admin-bff
 systemctl status admin-bff --no-pager
-curl -s --unix-socket /run/admin-bff/bff.sock http://localhost/ready   # {"status":"ok",...}
+admin-bff status                         # active, active, {"status":"ok",...}
 systemd-analyze security admin-bff
 journalctl -u admin-bff -n 200 --no-pager | grep database_tls   # "encrypted": true yoki false
 ```
@@ -329,10 +332,7 @@ ko'rinadi. Ko'p uchraydigan sabablar:
 ## 9. Birinchi superadmin
 
 ```bash
-cd /srv/admin-bff
-( set -a; . /etc/admin-bff/admin-bff.env; set +a
-  APP_ENV=production CREDENTIALS_DIRECTORY=/etc/admin-bff/credentials \
-  .venv/bin/python -m scripts.create_superadmin --username <login> )
+admin-bff superadmin <login>
 ```
 
 Parol ikki marta so'raladi. Superadmin birinchi kirishda parolini almashtiradi.
@@ -399,11 +399,12 @@ Allowlist'dagi admin kompyuteridan tekshiriladi:
 ## 12. Keyingi yangilashlar
 
 ```bash
-sudo /srv/admin-bff/deploy/deploy.sh
+admin-bff update
+admin-bff status
 ```
 
-Skript `git pull`, `uv sync`, migratsiyalar, `systemctl reload admin-bff`
-(sessiyalar uzilmaydi) va `/ready` tekshiruvini bajaradi.
+`update` `git pull`, `uv sync`, migratsiyalar, `systemctl reload admin-bff`
+(sessiyalar uzilmaydi) va `/ready` tekshiruvini bajaradi (`deploy/deploy.sh`).
 
 Orqaga qaytarish:
 
