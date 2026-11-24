@@ -105,14 +105,14 @@ def require_any(*permissions: str) -> Callable[..., Awaitable[Principal]]:
     return mark_guard(dependency, checked)
 
 
-def require_unless_docs_open(permission: str) -> Callable[..., Awaitable[None]]:
-    """For the API docs: open while `Settings.docs_open` (outside production,
-    or DOCS_TRY_IT_OUT), `require(permission)` otherwise. The frontend
-    developer reads them without signing in."""
+def require_in_production(permission: str) -> Callable[..., Awaitable[None]]:
+    """Open outside production (like the OpenAPI schema there), `require(permission)`
+    in production. For the API docs: the frontend developer reads them on a
+    development instance without signing in."""
     (checked,) = _checked((permission,))
 
     async def dependency(request: Request) -> None:
-        if request.app.state.settings.docs_open:
+        if not request.app.state.settings.is_production:
             return
         # GET only: no CSRF token is involved.
         service = await get_auth_service(request)
@@ -122,5 +122,5 @@ def require_unless_docs_open(permission: str) -> Callable[..., Awaitable[None]]:
             await _audit_denied(request, principal, [checked])
             raise AppError(ErrorCode.FORBIDDEN)
 
-    dependency.__name__ = f"require_unless_docs_open[{checked}]"
+    dependency.__name__ = f"require_in_production[{checked}]"
     return mark_guard(dependency, [checked])

@@ -81,13 +81,6 @@ class Settings(BaseSettings):
     # The only origin allowed by CORS and by the CSRF Origin check (section 10).
     # None means no cross-origin access at all.
     frontend_origin: str | None = None
-    # Temporary (owner's decision, 2026-11-24): until the domain and the admin
-    # frontend exist, the frontend developer sends requests from Swagger UI.
-    # In production this does what is always on outside it (`docs_open`):
-    # the docs need no session, show their sign-in bar, and the CSRF Origin
-    # check also accepts the API's own origin. Turn it off once the frontend
-    # is live.
-    docs_try_it_out: bool = False
 
     # Admin DB (PostgreSQL). `db_host` may be a unix socket directory.
     db_host: str = "127.0.0.1"
@@ -155,11 +148,6 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
-
-    @property
-    def docs_open(self) -> bool:
-        """Swagger UI is public and can send requests (app.api.docs)."""
-        return not self.is_production or self.docs_try_it_out
 
     def pinfl_key(self) -> bytes:
         if self.pinfl_hmac_key is None:

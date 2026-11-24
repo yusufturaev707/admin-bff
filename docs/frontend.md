@@ -17,50 +17,13 @@ Frontend faqat BFF API bilan ishlaydi.
     saqlamaydi va kirish ishlamaydi.
 - **Production'da Swagger faqat o'qish uchun.** Undan POST, PUT va DELETE
   yuborib bo'lmaydi, chunki Origin tekshiruvi faqat frontend origin'ini qabul
-  qiladi. Domen olinguncha test serverda bu ochiq (pastda, "Test server").
+  qiladi.
 - **Har bir endpoint'da:**
   - `security`: `session` cookie kerakmi va yozish so'rovida `csrf` sarlavhasi;
   - `x-permissions`: kerakli permission (menyu va tugmalarni shunga qarab
     yashiring).
 - **Client.** Sxemadan `openapi-typescript` yoki `orval` bilan generatsiya
   qiling.
-
-## Test server (domen olinguncha)
-
-Vaqtinchalik API `https://<server_IP>:8443/` manzilida. Sertifikat IP uchun
-yaratilgan, brauzer bir marta ogohlantiradi: "Advanced" va "Proceed".
-
-- **Swagger UI:** `https://<server_IP>:8443/api/v1/docs`. Tepadagi panel
-  orqali kiring, "Try it out" ishlaydi. Login va parolni server egasi beradi,
-  birinchi kirishda parol almashtiriladi.
-- **Sxema:** `http://<server_IP>:8090/v1.json`. Bu manzil HTTP, sertifikat
-  ogohlantirishi yo'q, shuning uchun generatsiya uchun qulay:
-  `npx openapi-typescript http://<server_IP>:8090/v1.json -o src/api/schema.d.ts`.
-- **O'z frontendingizni ulash.** Cookie `SameSite=Strict`, shuning uchun
-  frontend API'ga to'g'ridan-to'g'ri (`localhost`dan IP'ga) so'rov yubora
-  olmaydi. So'rovlar dev server proxy'si orqali yuboriladi, brauzer uchun API
-  shu `localhost`da bo'ladi. Vite uchun:
-
-```ts
-// vite.config.ts
-export default defineConfig({
-  server: {
-    proxy: {
-      "/api": {
-        target: "https://<server_IP>:8443",
-        changeOrigin: true,
-        secure: false, // IP uchun o'zimiz yaratgan sertifikat
-        // BFF Origin'ni tekshiradi: test serverda u API'ning o'z origin'i.
-        headers: { Origin: "https://<server_IP>:8443" },
-      },
-    },
-  },
-});
-```
-
-  Frontend kodida API manzili nisbiy bo'ladi (`/api/v1/...`). Production'da u
-  API domeni bilan almashtiriladi. Brauzer sifatida Chrome ishlatiladi: u
-  `http://localhost`da `Secure` cookie'ni qabul qiladi.
 
 Bu hujjatda autentifikatsiya (1-bosqich), ruxsatlar va adminlarni
 boshqarish (2-bosqich) hamda audit log (3-bosqich) bor. Tizimlar uchun meta

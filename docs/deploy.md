@@ -466,62 +466,14 @@ ufw status | head -1                             # "Status: active" bo'lsa, past
   o'zi `http://<server_IP>:8090/v1.json`. Tiplangan client shu manzildan
   yasaladi, masalan
   `npx openapi-typescript http://<server_IP>:8090/v1.json -o src/api/schema.d.ts`.
-- **Bu sahifadan so'rov yuborib bo'lmaydi ("Try it out" yo'q).** So'rov
-  yuborish uchun pastdagi 8443-port.
+- **Sahifadan so'rov yuborib bo'lmaydi ("Try it out" yo'q).** Login cookie'si
+  faqat HTTPS orqali ishlaydi, shuning uchun API'ni sinash uchun domen va
+  sertifikat (10-qadam) yoki alohida test muhiti kerak.
 - **`403` chiqsa**, frontendchining IP'si allowlist'da yo'q. **`404` yoki `500`
   chiqsa**, nginx `/srv/admin-bff/openapi`ni o'qiy olmayapti:
   `namei -l /srv/admin-bff/openapi/v1.json`.
 - Domen paydo bo'lgach, bu sayt o'chiriladi:
   `rm /etc/nginx/sites-enabled/zz-admin-bff-docs.conf && nginx -t && systemctl reload nginx`.
-
-### So'rov yuborish (domen olinguncha)
-
-Vaqtinchalik (egasining qarori, 2026-11-24): frontendchi
-`https://<server_IP>:8443/` orqali Swagger UI'da login qiladi va so'rov
-yuboradi, o'z frontendini ham shu API'ga ulaydi. HTTPS shart, chunki login
-cookie'si `Secure`. Domen yo'q, shuning uchun sertifikat IP uchun shu yerda
-yaratiladi, brauzer bir marta ogohlantiradi. `<server_IP>` o'rniga serverning
-IP'si yoziladi:
-
-```bash
-ss -ltn | grep -E ':8443\b'                      # bo'sh chiqishi kerak
-
-install -d -m 0750 /etc/nginx/tls/admin-bff-test
-openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:P-256 -days 365 \
-  -subj "/CN=<server_IP>" -addext "subjectAltName=IP:<server_IP>" \
-  -keyout /etc/nginx/tls/admin-bff-test/privkey.pem -out /etc/nginx/tls/admin-bff-test/cert.pem
-chmod 600 /etc/nginx/tls/admin-bff-test/privkey.pem
-
-echo 'DOCS_TRY_IT_OUT=true' >> /etc/admin-bff/admin-bff.env
-systemctl restart admin-bff                      # env fayli faqat restart'da o'qiladi
-
-cp /srv/admin-bff/deploy/nginx/admin-bff-test.conf /etc/nginx/sites-available/
-ln -s /etc/nginx/sites-available/admin-bff-test.conf /etc/nginx/sites-enabled/zz-admin-bff-test.conf
-nginx -t && systemctl reload nginx
-
-admin-bff superadmin frontend                    # frontendchining logini
-```
-
-- Allowlist 8090-port bilan bir xil (`admin-allowlist.conf`). UFW yoqilgan
-  bo'lsa: `ufw allow from <frontendchi_IP> to any port 8443 proto tcp`.
-- Frontendchi `https://<server_IP>:8443/`ni ochadi, ogohlantirishda
-  "Advanced" va "Proceed" ni bosadi, keyin tepadagi panel orqali kiradi.
-  Birinchi kirishda parolini `POST /api/v1/auth/password` bilan almashtiradi.
-  O'z frontendini ulash tartibi: `docs/frontend.md`, "Test server".
-- `frontend` superadmin: u hamma narsani qila oladi. Bazada hali haqiqiy
-  ma'lumot yo'q, shuning uchun bu vaqtincha qabul qilinadi.
-- Servis log'ida `docs_try_it_out_enabled` ogohlantirishi turadi, bu yoqilgan
-  holatni unutmaslik uchun.
-
-**Frontend ishga tushganda** (domen bilan, 10-qadam) bularning hammasi
-o'chiriladi:
-
-```bash
-sed -i '/^DOCS_TRY_IT_OUT=/d' /etc/admin-bff/admin-bff.env && systemctl restart admin-bff
-rm /etc/nginx/sites-enabled/zz-admin-bff-test.conf && nginx -t && systemctl reload nginx
-```
-
-`frontend` login'i esa adminkada bloklanadi yoki unga oddiy rol beriladi.
 
 ## Hozircha yo'q
 
