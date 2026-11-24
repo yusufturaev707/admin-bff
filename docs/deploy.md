@@ -164,10 +164,15 @@ usermod -aG admin-bff-redis admin-bff    # BFF o'z Redis socket'iga kiradi
 
 git clone https://github.com/yusufturaev707/admin-bff.git /srv/admin-bff
 cd /srv/admin-bff
-UV_PYTHON_DOWNLOADS=never uv sync --frozen --no-dev --compile-bytecode
+UV_PYTHON_PREFERENCE=only-system UV_PYTHON_DOWNLOADS=never \
+  uv sync --frozen --no-dev --compile-bytecode
 .venv/bin/python -V                      # Python 3.12.16
 readlink -f .venv/bin/python             # /usr/local/bin/python3.12
 ```
+
+`readlink` `/root/...` yoki `/home/...` ko'rsatsa, servis `203/EXEC Permission
+denied` bilan ishga tushmaydi: u uy papkalarini ko'rmaydi (`ProtectHome=yes`).
+Unda `rm -rf .venv` qilinadi va `uv sync` shu buyruq bilan qaytadan bajariladi.
 
 Kod root'ga tegishli bo'lib qoladi, servis uni faqat o'qiydi. Repo yopiq
 bo'lsa, `git clone` uchun GitHub'da shu serverga faqat o'qish huquqi bilan
@@ -403,7 +408,7 @@ Orqaga qaytarish:
 
 ```bash
 cd /srv/admin-bff && git checkout <oldingi_commit>
-UV_PYTHON_DOWNLOADS=never uv sync --frozen --no-dev --compile-bytecode
+UV_PYTHON_PREFERENCE=only-system UV_PYTHON_DOWNLOADS=never uv sync --frozen --no-dev --compile-bytecode
 systemctl reload admin-bff
 ```
 
