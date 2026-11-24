@@ -1,28 +1,58 @@
-"""The API site (deploy/nginx/admin-api.conf) works without a domain on
-https://<server_IP>:8443 and with one on 443, where only the domain in
-`server_name` and the certificate files change."""
+"""The API and frontend sites (deploy/nginx/) answer only to their domain:
+installing them means writing the domain into `server_name` and putting the
+certificate into a path that does not name the domain."""
 
 import re
 from pathlib import Path
 
-API_SITE = (Path(__file__).resolve().parents[2] / "deploy" / "nginx" / "admin-api.conf").read_text(
-    encoding="utf-8"
-)
+import pytest
+
+NGINX = Path(__file__).resolve().parents[2] / "deploy" / "nginx"
+SITES = {
+    "admin-api.conf": ("admin-api.uzbmb.uz", "/etc/nginx/tls/admin-api"),
+    "admin-frontend.conf": ("admin.uzbmb.uz", "/etc/nginx/tls/admin-frontend"),
+}
 
 
-def test_the_api_listens_on_443_and_on_8443_for_the_ip() -> None:
-    assert re.search(r"listen 443 ssl http2;\s+(#[^\n]*\n\s+)*listen 8443 ssl http2;", API_SITE)
+def _conf(name: str) -> str:
+    return (NGINX / name).read_text(encoding="utf-8")
 
 
-def test_the_domain_is_the_only_name_on_the_shared_ports() -> None:
-    # An IP in server_name on 80/443 would take over requests that reach
-    # another project's site through the server's IP today.
-    names = re.findall(r"^\s+server_name ([^;]+);", API_SITE, re.MULTILINE)
-    assert names == ["admin-api.uzbmb.uz", "admin-api.uzbmb.uz"]
-    assert not any(re.fullmatch(r"[\d.]+|_", n) for n in names)
-    assert "default_server" not in API_SITE
+@pytest.mark.parametrize("name", SITES)
+def test_the_site_answers_only_to_its_domain(name: str) -> None:
+    conf = _conf(name)
+    domain, _ = SITES[name]
+    # Directives only, not the comments that mention them.
+    assert re.findall(r"^\s+server_name ([^;]+);", conf, re.MULTILINE) == [domain, domain]
+    listens = re.findall(r"^\s+listen ([^;]+);", conf, re.MULTILINE)
+    # Another project's IP-based or unknown-name traffic must never land here:
+    # no default_server, no extra port.
+    assert listens == ["80", "443 ssl http2"]
 
 
-def test_the_certificate_path_does_not_name_the_domain() -> None:
-    assert "ssl_certificate     /etc/nginx/tls/admin-api/fullchain.pem;" in API_SITE
-    assert "ssl_certificate_key /etc/nginx/tls/admin-api/privkey.pem;" in API_SITE
+@pytest.mark.parametrize("name", SITES)
+def test_the_certificate_path_does_not_name_the_domain(name: str) -> None:
+    conf = _conf(name)
+    _, tls = SITES[name]
+    assert f"ssl_certificate     {tls}/fullchain.pem;" in conf
+    assert f"ssl_certificate_key {tls}/privkey.pem;" in conf
+
+
+@pytest.mark.parametrize("name", SITES)
+def test_port_80_only_redirects_and_hides_the_version(name: str) -> None:
+    plain = _conf(name).split("listen 80;", 1)[1].split("}", 1)[0]
+    assert "return 301 https://$host$request_uri;" in plain
+    assert "server_tokens off;" in plain
+    # `return` runs before allow/deny: an allowlist here would only look active.
+    assert "admin-allowlist" not in plain
+
+
+def test_the_api_keeps_internal_paths_closed_with_json_errors() -> None:
+    conf = _conf("admin-api.conf")
+    assert "location /internal/ { return 404; }" in conf
+    assert "location = /metrics { return 404; }" in conf
+    assert "include /etc/nginx/snippets/admin-allowlist.conf;" in conf
+    for code, name in [("403", "forbidden"), ("404", "not_found"), ("502 503 504", "unavailable")]:
+        assert f"error_page {code} = @{name};" in conf
+    # The denial page itself must pass the allowlist, or nginx answers in HTML.
+    assert re.search(r"location @forbidden \{\s+allow all;", conf)

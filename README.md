@@ -181,8 +181,8 @@ Fayllar `deploy/` papkasida:
 | `gunicorn.conf.py` | Gunicorn + `uvicorn_worker.UvicornWorker`, `/run/admin-bff/bff.sock`, Prometheus multiprocess fayllari |
 | `admin-bff.env.example` | `/etc/admin-bff/admin-bff.env` namunasi |
 | `admin-bff-redis.service`, `admin-bff-redis.conf` | BFF'ning alohida sessiya Redis'i: manbadan yig'ilgan 7.4, `/opt/admin-bff-redis` (faqat unix socket, `requirepass`) |
-| `nginx/admin-api.conf` | API server bloki: TLS, HSTS, rate limit, SSE, `/internal/` yopiq. Domensiz `https://<server_IP>:8443`, domen bilan 443 (`server_name`) |
-| `nginx/admin-frontend.conf` | frontend server bloki |
+| `nginx/admin-api.conf` | API server bloki: TLS, HSTS, rate limit, SSE, `/internal/` yopiq. Faqat o'z domeni (`server_name`, `# DOMEN`) |
+| `nginx/admin-frontend.conf` | frontend server bloki, faqat o'z domeni |
 | `nginx/admin-bff-internal.conf` | faqat `127.0.0.1`: JWKS va `/metrics` |
 | `nginx/admin-bff-docs.conf` | domensiz API hujjatlari frontendchi uchun: `http://<server_IP>:8090/api/v1/docs`, faqat o'qish (`openapi/index.html`) |
 | `nginx/admin-allowlist.conf` | IP allowlist (sukut bo'yicha hammasi yopiq) |

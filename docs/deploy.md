@@ -339,105 +339,102 @@ Parol ikki marta so'raladi. Superadmin birinchi kirishda parolini almashtiradi.
 
 ## 10. Nginx
 
-Boshqa loyihalarning saytlari o'zgarmaydi, BFF uchun yangi server bloklari
-qo'shiladi.
+Boshqa loyihalarning saytlari o'zgarmaydi, BFF uchun ikkita yangi sayt
+qo'shiladi: API (`admin-api.conf`) va frontend (`admin-frontend.conf`). Ikkalasi
+faqat o'z domeni bilan kelgan so'rovlarga javob beradi, shuning uchun
+serverdagi boshqa saytlarga ta'sir qilmaydi.
 
-API sayti (`admin-api.conf`) ikki manzilda ochiladi:
+**Kerak bo'ladi:**
 
-- **Domensiz, hozir:** `https://<server_IP>:8443`. 8443-portda bu yagona
-  sayt, shuning uchun IP orqali kelgan so'rov shu yerga tushadi.
-- **Domen bilan:** `https://<domen>`, 443-portda. nginx so'rovni domen nomiga
-  qarab shu saytga yuboradi, boshqa loyihalarning saytlariga ta'sir qilmaydi.
+- API va frontend domenlari, ikkalasi bitta asosiy domen ostida (masalan,
+  `admin-api.uzbmb.uz` va `admin.uzbmb.uz`): sessiya cookie'si `SameSite=Strict`.
+- Domenlar server IP'siga ochilishi: ichki DNS yoki adminlar kompyuterlaridagi
+  `hosts` fayli (`<server_IP> admin-api.uzbmb.uz admin.uzbmb.uz`).
+- Sertifikat: shu domenlar uchun yoki serverdagi `*.uzbmb.uz` sertifikati.
+  Bori shu buyruq bilan topiladi:
 
-80 va 443-portlarda `server_name`ga IP yozilmaydi: IP orqali kelgan so'rovlar
-u yerda hozir boshqa loyihaning saytiga tushadi, ular buzilmasin.
+  ```bash
+  grep -rh "ssl_certificate " /etc/nginx/sites-enabled/ | sort -u
+  openssl x509 -noout -subject -ext subjectAltName -enddate -in <fayl>   # DNS:*.uzbmb.uz bormi
+  ```
 
-nginx `sites-enabled`dagi fayllarni alifbo tartibida o'qiydi. `default_server`
-yozilmagan bo'lsa, ip:port'dagi birinchi server bloki default server bo'ladi.
-`admin-api` alifboda boshqa saytlardan (`api-iiv...`, `exam...`) oldin keladi,
-shuning uchun `sites-enabled`dagi nomlar `zz-` bilan boshlanadi.
+**1. Ruxsat ro'yxati.** Adminlar va frontendchining IP'lari, server
+tekshiruvlari uchun `127.0.0.1`:
 
 ```bash
-ss -ltn | grep -E ':8443\b'                      # bo'sh chiqishi kerak
+cp -n /srv/admin-bff/deploy/nginx/admin-allowlist.conf /etc/nginx/snippets/
+nano /etc/nginx/snippets/admin-allowlist.conf    # "deny all;"dan oldin: allow 127.0.0.1; allow <IP/diapazon>; ...
+```
 
-# Hozirgi holat: IP orqali kelgan so'rovga qaysi sayt javob beradi.
+**2. Sertifikat.** Har bir sayt o'z papkasidan oladi, papka nomida domen yo'q:
+
+```bash
+install -d -m 0750 /etc/nginx/tls/admin-api /etc/nginx/tls/admin-frontend
+# *.uzbmb.uz bo'lsa, ikkala papkaga shunga symlink:
+for d in admin-api admin-frontend; do
+  ln -s <wildcard_fullchain> /etc/nginx/tls/$d/fullchain.pem
+  ln -s <wildcard_privkey>   /etc/nginx/tls/$d/privkey.pem
+done
+# Aks holda har bir domenning o'z fullchain.pem va privkey.pem fayllari
+# (privkey.pem: chmod 600).
+```
+
+**3. Domen nomlari.** Fayllar nusxalanadi va `# DOMEN` bilan belgilangan
+qatorlarga domen yoziladi. Domenlar `admin-api.uzbmb.uz` va `admin.uzbmb.uz`
+bo'lsa, hech narsa o'zgarmaydi:
+
+```bash
+cp /srv/admin-bff/deploy/nginx/admin-api.conf /srv/admin-bff/deploy/nginx/admin-frontend.conf \
+   /srv/admin-bff/deploy/nginx/admin-bff-internal.conf /etc/nginx/sites-available/
+nano /etc/nginx/sites-available/admin-api.conf        # 2 ta server_name: API domeni
+nano /etc/nginx/sites-available/admin-frontend.conf   # 2 ta server_name: frontend domeni, CSP'da API domeni
+nano /etc/admin-bff/admin-bff.env                     # FRONTEND_ORIGIN=https://<frontend domeni>
+systemctl restart admin-bff
+install -d -m 0755 /var/www/admin-frontend            # frontend build'i shu yerga
+```
+
+**4. Ulash.** nginx `sites-enabled`dagi fayllarni alifbo tartibida o'qiydi.
+`default_server` yozilmagan bo'lsa, ip:port'dagi birinchi sayt IP orqali yoki
+noma'lum nom bilan kelgan so'rovlarni oladi. `admin-*` alifboda boshqa
+saytlardan (`api-iiv...`, `exam...`) oldin keladi, shuning uchun nomlar `zz-`
+bilan boshlanadi:
+
+```bash
+# Hozirgi holat (yozib qo'ying):
 curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
 curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
 
-# Ruxsat ro'yxati: adminlar va frontendchining IP'lari, server tekshiruvlari
-# uchun 127.0.0.1. 8090-sayt uchun qilingan bo'lsa, faqat tekshiring.
-cp -n /srv/admin-bff/deploy/nginx/admin-allowlist.conf /etc/nginx/snippets/
-nano /etc/nginx/snippets/admin-allowlist.conf    # "deny all;"dan oldin: allow 127.0.0.1; allow <IP>; ...
-
-install -d -m 0750 /etc/nginx/tls/admin-api
-```
-
-Sertifikat `/etc/nginx/tls/admin-api/` ichida ikkita fayl bo'ladi:
-`fullchain.pem` va `privkey.pem`. Ikki yo'l bor:
-
-- **Serverda `*.uzbmb.uz` sertifikati bo'lsa** (boshqa saytlardagi
-  `ssl_certificate` qatorlarida), shunga symlink qilinadi. Domen olingach
-  sertifikatga tegilmaydi:
-
-  ```bash
-  ln -s <wildcard_fullchain_yo'li> /etc/nginx/tls/admin-api/fullchain.pem
-  ln -s <wildcard_privkey_yo'li>   /etc/nginx/tls/admin-api/privkey.pem
-  ```
-
-- **Bo'lmasa**, IP uchun vaqtinchalik sertifikat yaratiladi:
-
-  ```bash
-  openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:P-256 -days 365 \
-    -subj "/CN=<server_IP>" -addext "subjectAltName=IP:<server_IP>" \
-    -keyout /etc/nginx/tls/admin-api/privkey.pem -out /etc/nginx/tls/admin-api/fullchain.pem
-  chmod 600 /etc/nginx/tls/admin-api/privkey.pem
-  ```
-
-IP orqali kirilganda ikkala holatda ham brauzer bir marta ogohlantiradi, chunki
-sertifikat IP uchun emas yoki o'zimiz yaratganmiz. Domen bilan ogohlantirish
-bo'lmaydi.
-
-```bash
-cp /srv/admin-bff/deploy/nginx/admin-api.conf /srv/admin-bff/deploy/nginx/admin-bff-internal.conf \
-  /etc/nginx/sites-available/
 ln -s /etc/nginx/sites-available/admin-api.conf /etc/nginx/sites-enabled/zz-admin-api.conf
+ln -s /etc/nginx/sites-available/admin-frontend.conf /etc/nginx/sites-enabled/zz-admin-frontend.conf
 ln -s /etc/nginx/sites-available/admin-bff-internal.conf /etc/nginx/sites-enabled/zz-admin-bff-internal.conf
 nginx -t && systemctl reload nginx
 
-# Boshqa saytlar uchun natija avvalgidek bo'lishi kerak:
+# Boshqa saytlar uchun avvalgidek bo'lishi kerak:
 curl -s  -o /dev/null -w 'http  %{http_code}\n' http://127.0.0.1/
 curl -sk -o /dev/null -w 'https %{http_code}\n' https://127.0.0.1/
-# BFF:
-curl -sk https://127.0.0.1:8443/health          # {"status":"ok"}
-ufw status | head -1                             # "Status: active" bo'lsa, pastda
 ```
 
-- Boshqa saytlar uchun natija o'zgargan bo'lsa (masalan, `403` chiqsa), BFF
-  default server bo'lib qolgan. Unda BFF bloklari darhol o'chiriladi:
+**5. Tekshirish.** DNS hali sozlanmagan bo'lsa ham, `--resolve` domenni shu
+serverga yo'naltiradi. Sertifikat ham shu bilan tekshiriladi, shuning uchun
+`-k` yo'q:
+
+```bash
+curl -s --resolve admin-api.uzbmb.uz:443:127.0.0.1 https://admin-api.uzbmb.uz/health   # {"status":"ok"}
+curl -s --resolve admin-api.uzbmb.uz:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' https://admin-api.uzbmb.uz/metrics   # 404
+curl -s --resolve admin-api.uzbmb.uz:80:127.0.0.1 -o /dev/null -w '%{http_code} %{redirect_url}\n' http://admin-api.uzbmb.uz/   # 301 https://...
+```
+
+- **Boshqa saytlar uchun natija o'zgargan bo'lsa** (masalan, `403` chiqsa),
+  BFF default server bo'lib qolgan. BFF saytlari darhol o'chiriladi:
   `rm /etc/nginx/sites-enabled/zz-admin-*.conf && nginx -t && systemctl reload nginx`.
-- `nginx -t` xato bersa, `reload` qilinmaydi va boshqa saytlar eski config
-  bilan ishlashda davom etadi.
-- UFW yoqilgan bo'lsa, 8443 faqat ro'yxatdagi IP'larga ochiladi:
-  `ufw allow from <IP> to any port 8443 proto tcp`.
-- Production'da `https://<server_IP>:8443/api/v1/docs` faqat `admin:api:docs`
-  ruxsati bor sessiya bilan ochiladi. Frontend hali bo'lmasa, hujjatlar
-  8090-portda o'qiladi (pastda, "API hujjatlari frontendchi uchun").
-
-### Domen olingach
-
-1. `nano /etc/nginx/sites-available/admin-api.conf`: `# DOMEN` deb belgilangan
-   ikkala `server_name` qatoriga domen yoziladi. Domen `admin-api.uzbmb.uz`
-   bo'lsa, hech narsa o'zgarmaydi.
-2. Sertifikat: wildcard'ga symlink qilingan bo'lsa, tegilmaydi. Aks holda
-   `/etc/nginx/tls/admin-api/` ichidagi ikkala fayl domen sertifikati bilan
-   almashtiriladi (`privkey.pem`: `chmod 600`).
-3. `nginx -t && systemctl reload nginx`.
-4. `/etc/admin-bff/admin-bff.env`da `FRONTEND_ORIGIN` frontend domeniga
-   o'zgartiriladi, keyin `systemctl restart admin-bff`.
-5. `listen 8443` qatori kerak bo'lmay qolsa, o'chiriladi.
-
-Frontend build'i tayyor bo'lganda `admin-frontend.conf` xuddi shu tarzda
-(`zz-admin-frontend.conf` nomi bilan) qo'shiladi. Build `/var/www/admin-frontend`ga joylanadi.
+- **`nginx -t` xato bersa**, `reload` qilinmaydi va boshqa saytlar eski
+  config bilan ishlashda davom etadi.
+- **`curl: (60) SSL certificate problem`** chiqsa, sertifikat shu domen uchun
+  emas yoki zanjir (`fullchain.pem`) to'liq emas.
+- **Ruxsat ro'yxatida yo'q IP** JSON'da `403 forbidden` oladi. 80-port faqat
+  HTTPS'ga yo'naltiradi, ruxsat 443'da tekshiriladi.
+- Frontend build'i tayyor bo'lmaguncha `https://<frontend domeni>` 403 yoki
+  404 qaytaradi, bu kutilgan holat.
 
 ## 11. Tekshirish
 
