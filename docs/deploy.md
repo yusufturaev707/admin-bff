@@ -335,8 +335,8 @@ Parol ikki marta so'raladi. Superadmin birinchi kirishda parolini almashtiradi.
 ## 10. Nginx
 
 Boshqa loyihalarning saytlari o'zgarmaydi. BFF'ning hamma nginx sozlamasi
-bitta faylda: `deploy/nginx/admin-api.conf`. Unda API, ichki JWKS va
-`/metrics` hamda 8090'dagi hujjatlar bor.
+bitta faylda: `deploy/nginx/admin-api.conf`. Unda API hamda ichki JWKS va
+`/metrics` bor.
 
 **So'rov yo'li** (server log'idan, 2026-11-24):
 
@@ -505,38 +505,18 @@ https://github.com/redis/redis/releases.
 Eski manba papkalari (`/usr/local/src/Python-*`, `/usr/local/src/redis-*`)
 keyin o'chiriladi.
 
-## API hujjatlari frontendchi uchun (frontend ishga tushguncha)
+## API hujjatlari frontendchi uchun
 
-Frontend hali yo'q bo'lsa, frontendchi API hujjatlarini server IP'si
-va porti orqali ko'radi: `http://<server_IP>:8090/api/v1/docs`. Bu faqat
-o'qish uchun Swagger UI: nginx repo'dagi sxemani (`openapi/v1.json`)
-ko'rsatadi, BFF'ga so'rov ketmaydi. Sxema `admin-bff update` bilan o'zi
-yangilanadi. Yo'llar API'ning o'zidagidek (`/api/v1/docs`,
-`/api/v1/openapi.json`): keyin frontendchi faqat host'ni almashtiradi.
+Hujjatlar API'ning o'zida: `https://kpi.uzbmb.uz/api/v1/docs`. Sahifa
+tepasidagi panelga login va parol kiritiladi, sxema `admin:api:docs` ruxsati
+bilan ochiladi va "Try it out" ishlaydi (`docs/frontend.md`, boshi).
 
-Bu `admin-api.conf`ning 3-qismi, alohida ulanmaydi: 10-qadamda fayl bilan
-birga yoqiladi. Frontendchining IP'si ruxsat ro'yxatida bo'lishi kerak
-(10-qadam, 2-band).
-
-```bash
-ss -ltn | grep -E ':8090\b'                      # nginx tinglayotgan bo'lishi kerak
-ufw status | head -1                             # "Status: active" bo'lsa, pastda
-```
-
-- **UFW yoqilgan bo'lsa**, port faqat frontendchiga ochiladi:
-  `ufw allow from <frontendchi_IP> to any port 8090 proto tcp`.
-- **Frontendchiga beriladi:** sahifa `http://<server_IP>:8090/api/v1/docs`,
-  sxemaning o'zi `http://<server_IP>:8090/api/v1/openapi.json`. Tiplangan
-  client shu manzildan yasaladi, masalan
-  `npx openapi-typescript http://<server_IP>:8090/api/v1/openapi.json -o src/api/schema.d.ts`.
-- **Sahifadan so'rov yuborib bo'lmaydi ("Try it out" yo'q).** Production'dagi
-  `https://kpi.uzbmb.uz/api/v1/docs` frontend orqali kirilgan sessiyani talab
-  qiladi, frontend esa hali yo'q.
-- **`403` chiqsa**, frontendchining IP'si allowlist'da yo'q. **`404` yoki `500`
-  chiqsa**, nginx `/srv/admin-bff/openapi`ni o'qiy olmayapti:
-  `namei -l /srv/admin-bff/openapi/v1.json`.
-- Frontend ishga tushgach, 3-qism `/etc/nginx/sites-available/admin-api.conf`dan
-  o'chiriladi va `nginx -t && systemctl reload nginx` qilinadi.
+- **Frontendchiga** shu ruxsat bor rol bilan alohida admin yarating
+  (adminkada yoki Swagger'ning o'zida, `admin_users_create`).
+- **Tiplangan client** sxema faylidan yasaladi. Faylni kirgandan keyin
+  brauzerda `https://kpi.uzbmb.uz/api/v1/openapi.json` ochib saqlash mumkin,
+  yoki repo'dagi nusxasi `openapi/v1.json` olinadi. Masalan:
+  `npx openapi-typescript ./openapi.json -o src/api/schema.d.ts`.
 
 ## Hozircha yo'q
 

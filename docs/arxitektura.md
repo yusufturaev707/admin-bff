@@ -333,7 +333,6 @@ To'rttalasi ham o'tsa, o'zgarishni push qilsa bo'ladi.
 | --- | --- |
 | `migrations/env.py` | Alembic sozlamasi: bazaga qanday ulanish va qaysi modellarni ko'rish |
 | `openapi/v1.json` | API sxemasining snapshot'i |
-| `openapi/index.html`, `viewer.js` | 8090-portdagi faqat o'qish uchun docs sahifasi |
 | `deploy/admin-bff.service` | systemd servisi (himoya sozlamalari bilan) |
 | `deploy/admin-bff-redis.service`, `admin-bff-redis.conf` | BFF'ning alohida Redis'i |
 | `deploy/gunicorn.conf.py` | Gunicorn sozlamalari (worker'lar soni, socket) |

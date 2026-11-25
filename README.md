@@ -185,7 +185,7 @@ Fayllar `deploy/` papkasida:
 | `gunicorn.conf.py` | Gunicorn + `uvicorn_worker.UvicornWorker`, `/run/admin-bff/bff.sock`, Prometheus multiprocess fayllari |
 | `admin-bff.env.example` | `/etc/admin-bff/admin-bff.env` namunasi |
 | `admin-bff-redis.service`, `admin-bff-redis.conf` | BFF'ning alohida sessiya Redis'i: manbadan yig'ilgan 7.4, `/opt/admin-bff-redis` (faqat unix socket, `requirepass`) |
-| `nginx/admin-api.conf` | BFF'ning yagona nginx fayli: API `https://kpi.uzbmb.uz` tashqi proxy orqali, 8080 (real IP, HSTS, rate limit, SSE, `/internal/` yopiq), ichki `127.0.0.1:18081` (JWKS, `/metrics`), faqat o'qish uchun hujjatlar `http://<server_IP>:8090/api/v1/docs` |
+| `nginx/admin-api.conf` | BFF'ning yagona nginx fayli: API `https://kpi.uzbmb.uz` tashqi proxy orqali, 8080 (real IP, HSTS, rate limit, SSE, `/internal/` yopiq), ichki `127.0.0.1:18081` (JWKS, `/metrics`) |
 | `nginx/admin-frontend.conf` | frontend server bloki, faqat o'z domeni |
 | `nginx/admin-allowlist.conf` | IP allowlist (sukut bo'yicha hammasi yopiq) |
 | `admin-bff.sh` | serverdagi qisqa buyruq `admin-bff`: `update`, `migrate`, `superadmin <login>`, `status` |

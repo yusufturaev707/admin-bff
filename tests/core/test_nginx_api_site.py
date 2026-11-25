@@ -11,10 +11,9 @@ import pytest
 NGINX = Path(__file__).resolve().parents[2] / "deploy" / "nginx"
 API, FRONTEND = "admin-api.conf", "admin-frontend.conf"
 # admin-api.conf holds all of the BFF: the API, then the internal block on
-# loopback and the read-only docs on their own port. `_` only appears on ports
-# no other site uses.
-LISTENS = {API: ["8080", "127.0.0.1:18081", "8090"], FRONTEND: ["8080"]}
-NAMES = {API: ["kpi.uzbmb.uz", "_", "_"], FRONTEND: ["admin.uzbmb.uz"]}
+# loopback. `_` only appears on a port no other site uses.
+LISTENS = {API: ["8080", "127.0.0.1:18081"], FRONTEND: ["8080"]}
+NAMES = {API: ["kpi.uzbmb.uz", "_"], FRONTEND: ["admin.uzbmb.uz"]}
 
 
 def _conf(name: str) -> str:
