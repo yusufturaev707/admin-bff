@@ -6,6 +6,8 @@ adminkadan boshqariladi. Frontend faqat shu API bilan ishlaydi
 (`/api/v1/openapi.json`, snapshot: `openapi/v1.json`).
 
 Holat: **3-bosqich (Audit)**. Bosqichlar ro'yxati `CLAUDE.md`ning 12-bo'limida.
+Loyiha xaritasi oddiy tilda (qayerda nima bor, so'rov qanday yuradi, yangi
+narsa qanday qo'shiladi): [`docs/arxitektura.md`](docs/arxitektura.md).
 Frontend uchun qo'llanma: [`docs/frontend.md`](docs/frontend.md), xavfsizlik:
 [`docs/security.md`](docs/security.md).
 
