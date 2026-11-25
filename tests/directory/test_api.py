@@ -29,6 +29,12 @@ def _codes(response: Any) -> list[str]:
     return [f["type"] for f in response.json()["error"]["details"]["fields"]]
 
 
+def _state(value: object) -> dict[str, Any]:
+    """An audit event's `before` or `after`."""
+    assert isinstance(value, dict)
+    return value
+
+
 async def test_regions_are_managed_and_audited(
     browsers: Any, settings: Settings, clock: FakeClock, audit: AuditRecorder
 ) -> None:
@@ -76,7 +82,7 @@ async def test_regions_are_managed_and_audited(
         "p_code": None,
         "status": False,
     }
-    assert audit.find("admin.region.delete")[-1].before["name"] == "Toshkent shahri"
+    assert _state(audit.find("admin.region.delete")[-1].before)["name"] == "Toshkent shahri"
 
 
 async def test_organizations_need_an_active_region(
@@ -112,7 +118,8 @@ async def test_organizations_need_an_active_region(
     assert moved.status_code == 422
     renamed = await boss.send("PATCH", f"{ADMIN}/organizations/{org['id']}", {"name": "Markaz"})
     assert renamed.json()["name"] == "Markaz"
-    assert audit.find("admin.organization.update")[-1].before["name"] == "1-son test markazi"
+    before = _state(audit.find("admin.organization.update")[-1].before)
+    assert before["name"] == "1-son test markazi"
 
 
 async def test_nothing_in_use_can_be_deleted(
@@ -158,7 +165,7 @@ async def test_a_user_belongs_to_an_organization_and_its_region(
     assert created.status_code == 201, created.text
     user = created.json()
     assert (user["org_id"], user["region_id"]) == (org["id"], region["id"])
-    assert audit.find("admin.user.create")[-1].after["region_id"] == region["id"]
+    assert _state(audit.find("admin.user.create")[-1].after)["region_id"] == region["id"]
 
     mismatch = await boss.send(
         "POST",
@@ -181,7 +188,10 @@ async def test_a_user_belongs_to_an_organization_and_its_region(
     assert moved.status_code == 200, moved.text
     assert (moved.json()["org_id"], moved.json()["region_id"]) == (far["id"], other["id"])
     update = audit.find("admin.user.update")[-1]
-    assert (update.before["org_id"], update.after["org_id"]) == (org["id"], far["id"])
+    assert (_state(update.before)["org_id"], _state(update.after)["org_id"]) == (
+        org["id"],
+        far["id"],
+    )
     # No organization any more: the region stays.
     left = await boss.send("PATCH", path, {"org_id": None})
     assert (left.json()["org_id"], left.json()["region_id"]) == (None, other["id"])

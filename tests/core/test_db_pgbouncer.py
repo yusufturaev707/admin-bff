@@ -49,6 +49,7 @@ async def test_a_taken_numbered_name_does_not_matter(
     try:
         async with engine.connect() as conn:
             raw = await conn.get_raw_connection()
+            assert raw.driver_connection is not None
             # Simple query protocol: asyncpg prepares nothing for it.
             await raw.driver_connection.execute('PREPARE "__asyncpg_stmt_1__" AS SELECT 1')
             monkeypatch.setattr(asyncpg.connection, "_uid", 0)

@@ -12,7 +12,7 @@ from structlog.testing import capture_logs
 
 from app import main
 from app.core import db
-from app.settings import Settings, db_host_is_local
+from app.settings import DbSslMode, Settings, db_host_is_local
 
 
 @pytest.mark.parametrize(
@@ -60,7 +60,7 @@ def test_production_accepts_prefer_without_a_root_cert(clean_env: pytest.MonkeyP
 
 @pytest.mark.parametrize("mode", ["verify-full", "verify-ca"])
 def test_production_accepts_tls_to_another_host(
-    clean_env: pytest.MonkeyPatch, tmp_path: Path, mode: str
+    clean_env: pytest.MonkeyPatch, tmp_path: Path, mode: DbSslMode
 ) -> None:
     ca = tmp_path / "db-ca.crt"
     ca.write_text("not parsed by the settings")
@@ -83,11 +83,12 @@ def test_development_allows_plain_text_to_another_host(clean_env: pytest.MonkeyP
 @pytest.mark.parametrize("mode", ["require", "allow"])
 def test_other_libpq_modes_do_not_exist(clean_env: pytest.MonkeyPatch, mode: str) -> None:
     with pytest.raises(ValidationError):
-        Settings(_env_file=None, app_env="test", db_host="10.0.0.5", db_sslmode=mode)
+        # Not a DbSslMode on purpose: the settings must refuse it.
+        Settings(_env_file=None, app_env="test", db_host="10.0.0.5", db_sslmode=mode)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("mode", ["prefer", "verify-full"])
-def test_tls_on_a_unix_socket_is_refused(clean_env: pytest.MonkeyPatch, mode: str) -> None:
+def test_tls_on_a_unix_socket_is_refused(clean_env: pytest.MonkeyPatch, mode: DbSslMode) -> None:
     # PostgreSQL never encrypts a unix socket: the setting would only look safe.
     with pytest.raises(ValidationError, match="unix socket"):
         Settings(_env_file=None, db_host="/var/run/postgresql", db_sslmode=mode)
@@ -98,7 +99,7 @@ def test_tls_on_a_unix_socket_is_refused(clean_env: pytest.MonkeyPatch, mode: st
     [("127.0.0.1", None), ("10.0.0.5", None), ("10.0.0.5", "prefer")],
 )
 def test_root_cert_without_a_verifying_mode_is_refused(
-    clean_env: pytest.MonkeyPatch, tmp_path: Path, host: str, mode: str | None
+    clean_env: pytest.MonkeyPatch, tmp_path: Path, host: str, mode: DbSslMode | None
 ) -> None:
     # "prefer" never checks the certificate: the CA file would only look used.
     ca = tmp_path / "db-ca.crt"
@@ -163,7 +164,7 @@ def test_root_cert_is_the_trust_anchor(
         seen.append(cafile)
         return real()
 
-    monkeypatch.setattr(db.ssl, "create_default_context", fake)
+    monkeypatch.setattr(ssl, "create_default_context", fake)  # the module app.core.db uses
     args = db.ssl_connect_args(_settings(db_sslmode="verify-full", db_sslrootcert=str(ca)))
     assert seen == [str(ca)]
     assert isinstance(args["ssl"], ssl.SSLContext)
