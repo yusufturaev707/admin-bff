@@ -33,7 +33,6 @@ from app.core.db import (
     migration_heads,
     ping_database,
 )
-from app.core.db_privileges import audit_privilege_problems
 from app.core.errors import install_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.metrics import METRICS_PATH, MetricsAuditListener, metrics_endpoint
@@ -91,19 +90,17 @@ async def check_database(engine: AsyncEngine, settings: Settings) -> None:
 
     * the schema must be at the code's migration head, in every environment:
       an old schema only fails later, request by request, with a 500;
-    * section 9: the service's DB role may only append to the audit log.
-      With two roles (DB_OWNER_USER set) production refuses to start
-      otherwise. With one role (owner's decision 2026-11-24, and usually in
-      development) it only warns: the audit log is then guarded by its
-      triggers and hash chain, which the table owner can get around;
     * a database on another host reached without TLS (DB_SSLMODE=prefer fell
       back to plain text) is logged as a warning.
+
+    The service's one DB user owns the tables (owner's decision, 2026-11-24),
+    so the audit log is guarded by its triggers and hash chain, not by
+    privileges (docs/security.md).
 
     If the database cannot be reached, production refuses to start and other
     environments only warn (/ready reports it)."""
     try:
         revision = await database_revision(engine)
-        problems = await audit_privilege_problems(engine)
         encrypted = await connection_is_encrypted(engine)
     except Exception as exc:
         if settings.is_production:
@@ -121,15 +118,6 @@ async def check_database(engine: AsyncEngine, settings: Settings) -> None:
             f"the database schema is at revision {revision or 'none'}, the code expects "
             f"{', '.join(sorted(expected))}. Run: uv run alembic upgrade head"
         )
-    if not problems:
-        return
-    if settings.is_production and settings.db_owner_user is not None:
-        raise RuntimeError(
-            "the application DB role (DB_USER) can modify the audit log: "
-            + "; ".join(problems)
-            + ". Run the migrations as DB_OWNER_USER (README, Deploy)."
-        )
-    logger.warning("audit_privileges_too_broad", problems=problems)
 
 
 async def sync_permission_catalogue(

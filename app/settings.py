@@ -90,14 +90,6 @@ class Settings(BaseSettings):
     db_password: SecretStr | None = None
     db_pool_size: int = Field(default=10, ge=1, le=100)
     db_max_overflow: int = Field(default=10, ge=0, le=100)
-    # Owner of the schema: runs the migrations and grants DB_USER its privileges
-    # (app/core/db_privileges.py). DB_USER itself may then only SELECT and
-    # INSERT the audit tables (section 9). Unset: DB_USER owns everything and
-    # the service only warns at startup (owner's decision 2026-11-24: one DB
-    # user in production). `db_owner_password` is a credential for deploy.sh
-    # only, never loaded into the service.
-    db_owner_user: str | None = None
-    db_owner_password: SecretStr | None = None
     # TLS to the database (app/core/db.py, ssl_connect_args). Unset: "prefer"
     # for a database on another host, "disable" on this one (`db_tls_mode`).
     # verify-full checks the certificate chain and that it was issued for

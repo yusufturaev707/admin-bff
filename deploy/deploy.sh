@@ -26,11 +26,9 @@ UV_PYTHON_PREFERENCE=only-system UV_PYTHON_DOWNLOADS=never \
     "$UV" sync --frozen --no-dev --compile-bytecode
 
 echo "==> alembic upgrade head"
-# Migratsiyalar DB_USER nomidan bajariladi: production'da bitta DB user
-# (egasining qarori, 2026-11-24). DB_OWNER_USER berilsa, ular sxema egasi
-# nomidan bajariladi (parol: credentials/db_owner_password, u servisga
-# berilmaydi) va DB_USER'ga audit jadvallarida faqat SELECT va INSERT qoladi
-# (9-bo'lim, migrations/env.py). Sozlamalar va secret'lar servisdagidek.
+# Migratsiyalar servisning o'zi ishlatadigan DB user nomidan bajariladi
+# (bitta DB user, egasining qarori, 2026-11-24). Sozlamalar va secret'lar
+# servisdagidek.
 bash "$APP_DIR/deploy/admin-bff.sh" migrate
 
 echo "==> systemctl reload admin-bff"

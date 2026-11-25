@@ -312,9 +312,6 @@ systemd-analyze security admin-bff
 journalctl -u admin-bff -n 200 --no-pager | grep database_tls   # "encrypted": true yoki false
 ```
 
-Log'dagi `audit_privileges_too_broad` ogohlantirishi kutilgan holat: bitta DB
-user bilan ishlanadi (5-qadam).
-
 Servis ishga tushmasa, sababi `journalctl -u admin-bff -n 50 --no-pager`da
 ko'rinadi. Ko'p uchraydigan sabablar:
 

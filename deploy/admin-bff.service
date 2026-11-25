@@ -42,9 +42,7 @@ Environment=APP_ENV=production PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 Environment=PROMETHEUS_MULTIPROC_DIR=/run/admin-bff/prometheus
 
 # Secret'lar: ilova ularni $CREDENTIALS_DIRECTORY'dan o'qiydi (pydantic-settings
-# secrets_dir). Fayl nomi = sozlama nomi. Ikki rol ishlatilsa (DB_OWNER_USER),
-# db_owner_password bu yerga qo'shilmaydi: servis audit jadvallarini
-# o'zgartira olmasin (9-bo'lim).
+# secrets_dir). Fayl nomi = sozlama nomi.
 # Keyingi bosqichlarda qo'shiladi:
 #   LoadCredential=jwt_private_key:/etc/admin-bff/credentials/jwt_private_key (4-bosqich)
 #   LoadCredential=oneid_client_secret:/etc/admin-bff/credentials/oneid_client_secret

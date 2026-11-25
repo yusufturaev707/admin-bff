@@ -6,8 +6,9 @@ named `audit_log_yYYYYmMM` and are created only by the SQL function
 TRUNCATE guard on each partition.
 
 Both tables are append-only: triggers reject UPDATE, DELETE and TRUNCATE for
-every role, and the application role is granted only SELECT and INSERT on
-`audit_log` and SELECT on `audit_anchors` (app/core/db_privileges.py).
+every role. The service's one DB user owns them (owner's decision,
+2026-11-24), so privileges do not guard them; the hash chain shows what the
+owner could still change (docs/security.md).
 
 `id` is backed by a plain sequence rather than an identity column, because
 PostgreSQL 16 does not support identity columns on partitioned tables.

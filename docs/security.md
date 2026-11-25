@@ -15,7 +15,7 @@ avtorizatsiya (2-bosqich), audit log (3-bosqich) va kalitlarni boshqarish bor.
 | DB'ga ulanishni tinglash yoki soxta DB serveri | Baza boshqa serverda. DB serveri TLS'ni qo'llasa, ulanish shifrlanadi (`DB_SSLMODE` sukut bo'yicha `prefer`), lekin sertifikat tekshirilmaydi: bu tinglashdan himoya qiladi, soxta DB serveridan (MITM) himoya qilmaydi. Server TLS'ni qo'llamasa, ulanish shifrlanmaydi va servis ishga tushganda `database_tls` ogohlantirishini yozadi (egasining qarori, 2026-11-24). Sertifikatni tekshirish kerak bo'lsa: `DB_SSLMODE=verify-full` va `DB_SSLROOTCERT` |
 | DB yoki DB backup sizib chiqishi | Parol Argon2id hash ko'rinishida. PINFL faqat HMAC hash sifatida saqlanadi, kalit DB'da emas |
 | Log orqali sizib chiqish | Parol, kod, token va cookie log'ga yozilmaydi. PII maskalanadi. Mavjud bo'lmagan login audit'ga ochiq yozilmaydi, chunki ba'zan unga parol kiritib yuboriladi |
-| Izni yashirish (audit yozuvini o'zgartirish yoki o'chirish) | Ikki rol ishlatilsa, ilova roli audit'ga faqat qo'sha oladi. Production hozircha bitta DB user bilan ishlaydi (pastda). Trigger'lar UPDATE, DELETE va TRUNCATE'ni hamma uchun rad etadi. Hash zanjiri va journald'dagi nusxa qolgan o'zgarishlarni ko'rsatadi (pastda) |
+| Izni yashirish (audit yozuvini o'zgartirish yoki o'chirish) | Production bitta DB user bilan ishlaydi, DB huquqlari audit'ni himoya qilmaydi (pastda). Trigger'lar UPDATE, DELETE va TRUNCATE'ni hamma uchun rad etadi. Hash zanjiri va journald'dagi nusxa qolgan o'zgarishlarni ko'rsatadi (pastda) |
 
 ## Avtorizatsiya (RBAC)
 
@@ -81,28 +81,17 @@ Oddiy GET ro'yxatlar yozilmaydi (9-bo'lim).
 
 ### Nega o'zgartirib bo'lmaydi
 
-Himoya to'rt qatlamdan iborat:
+Production bitta DB user bilan ishlaydi (egasining qarori, 2026-11-24). U
+jadvallarning egasi, shuning uchun DB huquqlari audit'ni himoya qilmaydi.
+Servis roli audit'ga faqat yozuv qo'sha oladigan ikki rolli sxemaning kodi
+2026-11-25 da olib tashlandi. Kerak bo'lsa, u git tarixidan qaytariladi.
 
-1. **DB huquqlari (faqat ikki rol bilan).** Egasining qarori bilan
-   (2026-11-24) production hozircha bitta DB user bilan ishlaydi. U
-   jadvallarning egasi, shuning uchun bu qatlam ishlamaydi va servis ishga
-   tushganda `audit_privileges_too_broad` deb ogohlantiradi. `DB_OWNER_USER`
-   berilsa, servis `DB_USER` roli bilan ishlaydi:
-   - Unda `audit_log` uchun faqat `SELECT` va `INSERT` bor. `id` ustuniga
-     INSERT huquqi ham yo'q, ya'ni id'ni ketma-ketlik beradi.
-   - `audit_anchors` uchun faqat `SELECT` bor.
-   - Partition'lar sxema egasi (`DB_OWNER_USER`) nomidan yaratiladi va
-     o'chiriladi. Buning uchun ikkita `SECURITY DEFINER` funksiya bor, ularda
-     cheklov qo'yilgan:
-     - partition faqat hozirgi vaqtdan ±13 oy ichida yaratiladi;
-     - o'chirish faqat 90 kundan eski butun oylar uchun ishlaydi.
-   - Production'da servis ishga tushishda o'z huquqlarini tekshiradi. Audit
-     jadvallarini o'zgartira olsa (owner, superuser yoki ortiqcha grant),
-     servis ishga tushmaydi.
-2. **Trigger'lar.** UPDATE, DELETE va TRUNCATE har qanday rol uchun xato
+Himoya uch qatlamdan iborat:
+
+1. **Trigger'lar.** UPDATE, DELETE va TRUNCATE har qanday rol uchun xato
    beradi, superuser va jadval egasi uchun ham. TRUNCATE trigger'i har bir
    partition'da alohida turadi.
-3. **Hash zanjiri.** Har bir yozuv o'zidan oldingi yozuvga bog'langan:
+2. **Hash zanjiri.** Har bir yozuv o'zidan oldingi yozuvga bog'langan:
    `hash = sha256(prev_hash + canonical_json(yozuv))`.
    - Yozuvlar `pg_advisory_xact_lock` ostida ketma-ket yoziladi.
    - Yozuv vaqti zanjir bo'ylab kamaymaydi: server soati orqaga ketsa ham,
@@ -111,7 +100,7 @@ Himoya to'rt qatlamdan iborat:
      o'chirilsa, orasiga qo'shilsa, vaqti orqaga surilsa yoki id takrorlansa,
      u xato beradi. CLI va systemd timer olib tashlangani uchun (2026-11-23)
      tekshiruv hozircha avtomatik ishga tushmaydi.
-4. **Nusxa.** Har bir yozuv id va hash bilan `audit` logger'iga ham yoziladi
+3. **Nusxa.** Har bir yozuv id va hash bilan `audit` logger'iga ham yoziladi
    (journald). DB'ga yozib bo'lmasa, log'da `stored: false` yozuvi qoladi.
 
 ### Qolgan xavflar

@@ -314,7 +314,6 @@ To'rttalasi ham o'tsa, o'zgarishni push qilsa bo'ladi.
 | Fayl | Vazifasi |
 | --- | --- |
 | `db.py` | PostgreSQL'ga ulanish (PgBouncer va TLS sozlamalari ham shu yerda) |
-| `db_privileges.py` | DB user'ning huquqlarini tekshirish va berish |
 | `redis.py` | Redis'ga ulanish |
 | `errors.py` | Yagona xato formati va xato kodlari |
 | `pagination.py` | `?page=&page_size=` va noma'lum parametrlarni rad etish |
