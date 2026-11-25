@@ -502,6 +502,16 @@ https://github.com/redis/redis/releases.
 Eski manba papkalari (`/usr/local/src/Python-*`, `/usr/local/src/redis-*`)
 keyin o'chiriladi.
 
+## Audit log'ni tekshirish
+
+```bash
+admin-bff verify-audit           # oxirida: "Natija: muammo topilmadi."
+```
+
+Buyruq audit zanjirini tekshiradi va journald'dagi eng yangi audit yozuvini
+bazadan qidiradi (README, "Audit log'ni tekshirish"). U hech narsani
+o'zgartirmaydi, shuning uchun servis ishlab turganda ham bajarsa bo'ladi.
+
 ## API hujjatlari frontendchi uchun
 
 Hujjatlar API'ning o'zida: `https://kpi.uzbmb.uz/api/v1/docs`. Sahifa

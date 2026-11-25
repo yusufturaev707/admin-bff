@@ -98,8 +98,8 @@ Himoya uch qatlamdan iborat:
      yangi yozuv oldingisining vaqtini oladi.
    - `app/audit/verify.py` zanjirni tekshiradi. Bitta yozuv o'zgartirilsa,
      o'chirilsa, orasiga qo'shilsa, vaqti orqaga surilsa yoki id takrorlansa,
-     u xato beradi. CLI va systemd timer olib tashlangani uchun (2026-11-23)
-     tekshiruv hozircha avtomatik ishga tushmaydi.
+     u xato beradi. Serverda u qo'lda ishga tushiriladi: `admin-bff verify-audit`
+     (egasining qarori, 2026-11-25). Avtomatik (timer bilan) ishlamaydi.
 3. **Nusxa.** Har bir yozuv id va hash bilan `audit` logger'iga ham yoziladi
    (journald). DB'ga yozib bo'lmasa, log'da `stored: false` yozuvi qoladi.
 
@@ -108,7 +108,7 @@ Himoya uch qatlamdan iborat:
 | Holat | Nima qilinadi |
 | --- | --- |
 | Owner yoki superuser trigger'ni o'chirib, butun zanjirni qaytadan hisoblab yozadi | Bitta DB user bilan (hozirgi holat) BFF'ning DB parolini bilgan har kim shunday qila oladi. DB ichidan buni aniqlab bo'lmaydi. Faqat tashqi nusxa bilan solishtirib bilinadi. TODO(owner): journald yozuvlarini boshqa serverga (syslog yoki Loki) yuborish kerak |
-| Zanjir oxiridagi yozuvlar kesib tashlanadi | Zanjir tekshiruvi buni ko'rmaydi. U oxirgi `id` va `hash`ni qaytaradi, ularni journald'dagi oxirgi `audit` yozuvi bilan solishtiring |
+| Zanjir oxiridagi yozuvlar kesib tashlanadi | Zanjirning o'zi buni ko'rmaydi. `admin-bff verify-audit` journald'dagi eng yangi `audit` yozuvini bazadan qidiradi: u yo'q bo'lsa yoki hash'i boshqa bo'lsa, xato beradi. journald nusxasi ham o'chirilgan bo'lsa, buni faqat boshqa serverdagi nusxa ko'rsatadi (TODO(owner), yuqorida) |
 | Ilova credential'lari bilan to'g'ri hash'li soxta yozuv qo'shiladi | Zanjir mavjud yozuvlarni himoya qiladi, yangi yozuvni emas. Ilova roli yozuvchi bo'lgani uchun bu cheklov tabiiy. Credential'lar faqat systemd orqali beriladi |
 | Amal bajarilgan, lekin audit yozuvi DB'ga tushmagan (masalan, DB shu orada uzilgan) | Amal va uning audit yozuvi bitta tranzaksiyada emas. Bunday holatda so'rov `500` bilan tugaydi va journald'da `stored: false` yozuvi qoladi |
 

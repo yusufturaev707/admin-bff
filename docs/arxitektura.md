@@ -330,12 +330,13 @@ To'rttalasi ham o'tsa, o'zgarishni push qilsa bo'ladi.
 
 | Joy | Vazifasi |
 | --- | --- |
+| `scripts/verify_audit.py` | Audit log butunligini tekshirish (`admin-bff verify-audit`) |
 | `migrations/env.py` | Alembic sozlamasi: bazaga qanday ulanish va qaysi modellarni ko'rish |
 | `openapi/v1.json` | API sxemasining snapshot'i |
 | `deploy/admin-bff.service` | systemd servisi (himoya sozlamalari bilan) |
 | `deploy/admin-bff-redis.service`, `admin-bff-redis.conf` | BFF'ning alohida Redis'i |
 | `deploy/gunicorn.conf.py` | Gunicorn sozlamalari (worker'lar soni, socket) |
-| `deploy/deploy.sh`, `admin-bff.sh` | `admin-bff update`, `migrate`, `superadmin`, `status` buyruqlari |
+| `deploy/deploy.sh`, `admin-bff.sh` | `admin-bff update`, `migrate`, `superadmin`, `verify-audit`, `status` buyruqlari |
 | `deploy/nginx/` | Nginx sozlamalari: API (`admin-api.conf`), frontend (`admin-frontend.conf`), IP ro'yxati |
 | `docs/frontend.md` | Frontend dasturchi uchun qo'llanma |
 | `docs/deploy.md` | Serverga o'rnatish tartibi |

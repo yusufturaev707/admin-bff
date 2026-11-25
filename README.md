@@ -203,6 +203,20 @@ sudo admin-bff superadmin <login>
 - Barcha superadminlar bloklanib qolsa ham, shu skript bilan yangi superadmin
   yaratiladi.
 
+### Audit log'ni tekshirish
+
+```bash
+sudo admin-bff verify-audit
+```
+
+Buyruq audit log'dagi har bir yozuvni tekshiradi. Yozuv o'zgartirilgan,
+o'chirilgan, orasiga qo'shilgan yoki vaqti orqaga surilgan bo'lsa, u xato
+beradi. journald'dagi eng yangi audit yozuvi bazada borligini ham
+solishtiradi, shuning uchun oxirgi yozuvlar o'chirilgani ham ko'rinadi.
+Natija `muammo topilmadi` yoki `MUAMMO TOPILDI` bo'ladi. Ikkinchi holatda
+buyruq qaysi yozuvda nima topilganini ko'rsatadi va 1 kodi bilan tugaydi
+(`scripts/verify_audit.py`, `docs/security.md`).
+
 ### Metrikalar
 
 Prometheus metrikalari `/metrics` manzilida. Ular tashqaridan yopiq, faqat

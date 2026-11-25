@@ -10,9 +10,9 @@ every record:
 * `ts` does not go backwards: a backdated record breaks this;
 * `id` is unique (the primary key is `(id, ts)`, as partitioning requires).
 
-It cannot see records cut off the end of the chain. Compare the reported head
-(last id and hash) with the copy in journald, which has the hash of every
-record (docs/security.md).
+It cannot see records cut off the end of the chain. scripts/verify_audit.py
+(`admin-bff verify-audit`) also looks the newest record of the journald copy
+up in the database (docs/security.md).
 """
 
 from dataclasses import dataclass, field
@@ -30,8 +30,8 @@ BATCH = 1000
 @dataclass(frozen=True, slots=True)
 class ChainProblem:
     record_id: int
-    kind: str  # "prev_hash", "hash", "ts", "duplicate_id"
-    message: str  # Uzbek, printed by the CLI
+    kind: str  # "prev_hash", "hash", "ts", "duplicate_id", "missing"
+    message: str  # Uzbek, printed by scripts/verify_audit.py
 
 
 @dataclass(slots=True)

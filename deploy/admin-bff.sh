@@ -16,6 +16,7 @@ Foydalanish:
   admin-bff update             yangi kodni o'rnatish (git pull, migratsiyalar, reload)
   admin-bff migrate            faqat migratsiyalar
   admin-bff superadmin LOGIN   yangi superadmin (parol so'raladi)
+  admin-bff verify-audit       audit log butunligini tekshirish
   admin-bff status             servislar holati va /ready
 EOF
 }
@@ -56,6 +57,22 @@ case "$1" in
             exit 2
         fi
         with_settings .venv/bin/python -m scripts.create_superadmin --username "$2"
+        ;;
+    verify-audit)
+        # journald'dagi eng yangi audit yozuvi (id va hash). Zanjir oxiridan
+        # yozuvlar o'chirilsa, u bazada bo'lmaydi (scripts/verify_audit.py).
+        last=$(journalctl -u admin-bff -o cat --no-pager --reverse |
+            grep -F '"event": "audit"' | grep -m 1 -F '"audit_id"' || true)
+        id=$(printf '%s' "$last" | grep -o '"audit_id": [0-9]*' | grep -o '[0-9]*$' || true)
+        hash=$(printf '%s' "$last" | grep -o '"hash": "[0-9a-f]\{64\}"' |
+            grep -o '[0-9a-f]\{64\}' || true)
+        if [ -n "$id" ] && [ -n "$hash" ]; then
+            with_settings .venv/bin/python -m scripts.verify_audit \
+                --journal-id "$id" --journal-hash "$hash"
+        else
+            echo "journald'da audit yozuvi topilmadi." >&2
+            with_settings .venv/bin/python -m scripts.verify_audit
+        fi
         ;;
     status)
         for unit in admin-bff admin-bff-redis; do
