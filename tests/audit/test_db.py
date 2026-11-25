@@ -11,7 +11,7 @@ import pytest
 
 from app.audit.chain import GENESIS_HASH, AuditRow
 from app.audit.models import AUDIT_CHAIN_LOCK_KEY
-from app.audit.verify import apply_retention, verify_chain
+from app.audit.verify import verify_chain
 from app.audit.writer import DbAuditSink
 from app.core.time import utcnow
 from app.settings import Settings
@@ -132,7 +132,14 @@ async def test_functions_are_not_executable_by_public(pg: asyncpg.Connection) ->
     assert not any(r["public_exec"] for r in rows)
 
 
-# --- retention -------------------------------------------------------------------
+# --- dropping old partitions ------------------------------------------------------
+# No retention job runs (owner's decision, 2026-11-23). The database function
+# from migration 0003 is still there and the chain check follows its anchors.
+
+
+async def _drop_expired(pg: asyncpg.Connection) -> list[asyncpg.Record]:
+    rows: list[asyncpg.Record] = await pg.fetch("SELECT * FROM audit_drop_expired_partitions(90)")
+    return rows
 
 
 @pytest.mark.parametrize("days", [None, 0, 30, 89])
@@ -153,24 +160,21 @@ async def test_retention_anchors_and_drops_old_partitions(
     clock.now = now
     await write_events(settings, clock, 2)
 
+    dropped = await _drop_expired(pg)
+    assert [tuple(d) for d in dropped] == [
+        (month_partition(old[0].ts), 3, old[-1].id, old[-1].hash)
+    ]
+    anchor = await pg.fetchrow("SELECT * FROM audit_anchors")
+    assert (anchor["last_id"], anchor["last_hash"]) == (old[-1].id, old[-1].hash)
+    assert month_partition(old[0].ts) not in await _partitions(pg)
+
     async with sessions(settings) as db:
-        dropped = await apply_retention(db, retention_days=90)
-        assert [(d.name, d.rows, d.last_id) for d in dropped] == [
-            (month_partition(old[0].ts), 3, old[-1].id)
-        ]
-        assert dropped[0].last_hash == old[-1].hash
-        anchor = await pg.fetchrow("SELECT * FROM audit_anchors")
-        assert (anchor["last_id"], anchor["last_hash"]) == (old[-1].id, old[-1].hash)
-        assert month_partition(old[0].ts) not in await _partitions(pg)
-        # Next month's partition is created ahead of time.
-        assert month_partition(utcnow() + timedelta(days=31)) in await _partitions(pg)
-
         result = await verify_chain(db)
-        assert result.ok, result.problems
-        assert (result.anchor_id, result.checked) == (anchor["id"], 3)
-        assert result.first_id == old[-1].id + 1
+    assert result.ok, result.problems
+    assert (result.anchor_id, result.checked) == (anchor["id"], 3)
+    assert result.first_id == old[-1].id + 1
 
-        assert await apply_retention(db, retention_days=90) == []  # nothing more to drop
+    assert await _drop_expired(pg) == []  # nothing more to drop
 
 
 async def test_chain_continues_from_the_anchor_when_everything_was_dropped(
@@ -180,8 +184,8 @@ async def test_chain_continues_from_the_anchor_when_everything_was_dropped(
     clock.now = now - timedelta(days=200)
     await write_events(settings, clock, 2)
     old = await records(settings)
+    await _drop_expired(pg)
     async with sessions(settings) as db:
-        await apply_retention(db, retention_days=90)
         assert await records(settings) == []
         clock.now = now - timedelta(days=300)  # a clock far behind the anchor
         await DbAuditSink(db, clock=clock).write(event())
@@ -319,8 +323,7 @@ async def test_verify_finds_a_record_older_than_the_anchor(
     old = await records(settings)
     clock.now = now
     await write_events(settings, clock, 1)
-    async with sessions(settings) as db:
-        await apply_retention(db, retention_days=90)
+    await _drop_expired(pg)
     # A record with an id from the dropped part reappears.
     row = AuditRow.from_event(event(), clock())
     await pg.execute(f"ALTER SEQUENCE audit_log_id_seq RESTART WITH {old[0].id}")

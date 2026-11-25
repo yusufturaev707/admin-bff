@@ -156,7 +156,6 @@ mavjud bo'lsa) `.env` umuman o'qilmaydi.
 | `DB_OWNER_USER` | yo'q | ixtiyoriy: sxema egasi, faqat migratsiyalar uchun. Yo'q bo'lsa, `DB_USER` (production'da shunday) |
 | `DB_SSLMODE` | boshqa hostda `prefer`, shu hostda `disable` | `prefer`: server TLS'ni qo'llasa shifrlanadi, sertifikat tekshirilmaydi. `verify-full` (sertifikat zanjiri va `DB_HOST` nomi) yoki `verify-ca` (faqat zanjir) shifrlashsiz ulanmaydi. Production boshqa hostdagi bazaga `disable` bilan ishga tushmaydi |
 | `DB_SSLROOTCERT` | yo'q | faqat `verify-*` bilan: DB sertifikatini imzolagan CA fayli. Yo'q bo'lsa, tizimning CA'lari |
-| `AUDIT_RETENTION_DAYS` | `90` | audit log saqlash muddati, kamida 90 |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | parol URL'da bo'lmasin |
 | `REDIS_KEY_PREFIX` | bo'sh | umumiy dev Redis'da kalitlar aralashmasligi uchun |
 | `SESSION_IDLE_TIMEOUT_S`, `SESSION_ABSOLUTE_TIMEOUT_S` | `1800`, `43200` | sessiya: 30 daqiqa harakatsizlik, 12 soat jami |

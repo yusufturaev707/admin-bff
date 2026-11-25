@@ -106,9 +106,6 @@ class Settings(BaseSettings):
     db_sslmode: DbSslMode | None = None
     db_sslrootcert: str | None = None
 
-    # Whole monthly audit partitions older than this are dropped (section 9).
-    audit_retention_days: int = Field(default=90, ge=90, le=3650)
-
     # Session/cache Redis. `unix:///run/redis/redis.sock` is also accepted.
     redis_url: str = "redis://127.0.0.1:6379/0"
     redis_password: SecretStr | None = None

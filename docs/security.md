@@ -126,21 +126,17 @@ Himoya to'rt qatlamdan iborat:
 ### Saqlash muddati
 
 - **Jadval.** `audit_log` oylar bo'yicha bo'lingan (`audit_log_yYYYYmMM`).
-- **Retention.** `app/audit/verify.py`dagi `apply_retention` ikki ishni
-  bajaradi:
-  - keyingi oy partition'ini oldindan yaratadi;
-  - to'liq 90 kundan (`AUDIT_RETENTION_DAYS`) eski oylarni o'chiradi.
-
-  Uni har kuni ishga tushirgan CLI va systemd timer egasining qarori bilan
-  (2026-11-23) olib tashlangan. Hozircha eski partition'lar o'chirilmaydi,
-  joriy oy partition'ini esa yozuvchi o'zi yaratadi.
-- **Anchor.** O'chirishdan oldin har bir oyning oxirgi yozuvi (id, vaqt va
-  hash) `audit_anchors`ga yoziladi. Keyin zanjir eng yangi anchor'dan
-  tekshiriladi.
-- **O'chirishning izi.** Har bir o'chirilgan partition audit'ga
-  `audit.partition.drop` bo'lib yoziladi.
-- **Chegara.** Funksiya 90 kundan kam muddatni qabul qilmaydi. Shuning
-  uchun ilova roli buzilgan taqdirda ham yangi yozuvlarni o'chira olmaydi.
+- **Eski yozuvlar o'chirilmaydi.** Egasining qarori (2026-11-23): retention
+  yo'q, audit log to'liq saqlanadi. Har oyning partition'ini yozuvchi o'zi
+  yaratadi.
+- **Bazada qolgan funksiya.** Migratsiya 0003'dagi
+  `audit_drop_expired_partitions(days)`ni ilova chaqirmaydi. Kerak bo'lsa,
+  u qo'lda chaqiriladi:
+  - to'liq `days` kundan eski oylarni o'chiradi va 90 kundan kam muddatni
+    qabul qilmaydi;
+  - o'chirishdan oldin har bir oyning oxirgi yozuvini (id, vaqt va hash)
+    `audit_anchors`ga yozadi. Shundan keyin zanjir eng yangi anchor'dan
+    tekshiriladi.
 
 ### Shaxsiy ma'lumotlar
 

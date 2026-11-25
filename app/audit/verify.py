@@ -1,4 +1,4 @@
-"""Chain verification and retention of the audit log.
+"""Chain verification of the audit log.
 
 Verification walks the whole remaining chain in `id` order and checks, for
 every record:
@@ -18,7 +18,7 @@ record (docs/security.md).
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import select, text, tuple_
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.audit.chain import GENESIS_HASH, AuditRow
@@ -117,37 +117,3 @@ async def verify_chain(
             ).all()
     del result.problems[max_problems:]
     return result
-
-
-@dataclass(frozen=True, slots=True)
-class DroppedPartition:
-    name: str
-    rows: int
-    last_id: int | None
-    last_hash: str | None
-
-
-async def apply_retention(
-    db: async_sessionmaker[AsyncSession], *, retention_days: int
-) -> list[DroppedPartition]:
-    """Creates this month's and next month's partitions, then drops whole
-    partitions older than `retention_days` (anchoring each one first)."""
-    async with db() as session, session.begin():
-        await session.execute(
-            text(
-                "SELECT audit_ensure_partition(now()), "
-                "audit_ensure_partition(now() + interval '1 month')"
-            )
-        )
-        rows = await session.execute(
-            text("SELECT * FROM audit_drop_expired_partitions(:days)"), {"days": retention_days}
-        )
-        return [
-            DroppedPartition(
-                name=r.dropped_partition,
-                rows=int(r.dropped_rows),
-                last_id=r.anchor_last_id,
-                last_hash=r.anchor_last_hash,
-            )
-            for r in rows.all()
-        ]
